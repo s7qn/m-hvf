@@ -1,0 +1,6 @@
+{
+  "name": "منصة سيطرة",
+  "description": "المنصة الأكاديمية الشاملة لطلاب هندسة تقنيات السيطرة والأتمتة - محاضرات، ملخصات، أسئلة امتحانية، جدول أسبوعي واختبارات مؤمنة",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
