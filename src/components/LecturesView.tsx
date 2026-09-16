@@ -101,66 +101,117 @@ export const LecturesView: React.FC<LecturesViewProps> = ({
     <div className="space-y-6">
       {/* Student Quick Stats Mini-Dashboard */}
       {lectures.length > 0 && (
-        <div id="student-quick-dashboard-banner" className="bg-gradient-to-r from-blue-900 via-indigo-900 to-slate-900 text-white rounded-2xl p-4 sm:p-5 shadow-sm border border-blue-800 flex flex-col md:flex-row items-center justify-between gap-4">
-          <div className="flex items-center gap-3 w-full md:w-auto">
-            <div className="w-11 h-11 rounded-xl bg-white/10 border border-white/20 flex items-center justify-center shrink-0">
-              <TrendingUp className="w-5 h-5 text-blue-300" />
-            </div>
-            <div>
-              <div className="flex items-center gap-2">
-                <h3 className="text-sm font-bold text-white">
-                  {language === 'ar' ? 'إحصائيات الإنجاز الأكاديمي' : 'Academic Progress Overview'}
-                </h3>
-                <span className="text-[10px] bg-blue-500/30 px-2 py-0.5 rounded-full border border-blue-400/30 font-bold text-blue-200">
-                  Dashboard
-                </span>
+        <div id="student-quick-dashboard-banner" className="bg-gradient-to-r from-blue-900 via-indigo-900 to-slate-900 text-white rounded-2xl p-3.5 sm:p-5 shadow-xs border border-blue-800 transition-all">
+          {/* Mobile view: compact 1-row summary */}
+          <div className="flex md:hidden items-center justify-between gap-2">
+            <div className="flex items-center gap-2.5">
+              <div className="w-8 h-8 rounded-lg bg-white/10 flex items-center justify-center shrink-0">
+                <TrendingUp className="w-4 h-4 text-blue-300" />
               </div>
-              <p className="text-xs text-blue-200">
-                {language === 'ar' 
-                  ? `${readLectureIds.length} من ${lectures.length} محاضرة مقروءة`
-                  : `${readLectureIds.length} of ${lectures.length} lectures studied`}
-              </p>
+              <div>
+                <div className="flex items-center gap-1.5">
+                  <span className="text-xs font-black text-white">
+                    {readLectureIds.length}/{lectures.length}
+                  </span>
+                  <span className="text-[10px] text-blue-200">
+                    {language === 'ar' ? 'مقروءة' : 'read'}
+                  </span>
+                  <span className="text-[10px] font-bold text-blue-300">
+                    (%{lectures.length > 0 ? Math.round((readLectureIds.length / lectures.length) * 100) : 0})
+                  </span>
+                </div>
+                <div className="w-24 bg-white/20 rounded-full h-1.5 mt-1 overflow-hidden">
+                  <div 
+                    className="bg-blue-400 h-full rounded-full transition-all duration-300"
+                    style={{ width: `${lectures.length > 0 ? (readLectureIds.length / lectures.length) * 100 : 0}%` }}
+                  />
+                </div>
+              </div>
+            </div>
+
+            <div className="flex items-center gap-1.5">
+              {attemptsList.length > 0 && (
+                <span className="text-[11px] font-black text-emerald-400 bg-emerald-950/70 border border-emerald-800/80 px-2 py-1 rounded-lg">
+                  %{quizSuccessRate} {language === 'ar' ? 'نجاح' : 'pass'}
+                </span>
+              )}
+
+              {onOpenDashboard && (
+                <button
+                  type="button"
+                  id="btn-open-full-dashboard-from-lectures-mobile"
+                  onClick={onOpenDashboard}
+                  className="px-2.5 py-1 rounded-lg bg-blue-600 hover:bg-blue-500 text-white text-[11px] font-bold flex items-center gap-1 shrink-0"
+                >
+                  <BarChart3 className="w-3.5 h-3.5" />
+                  <span>{language === 'ar' ? 'التقدم' : 'Stats'}</span>
+                </button>
+              )}
             </div>
           </div>
 
-          <div className="flex items-center gap-5 sm:gap-6 w-full md:w-auto justify-between md:justify-end flex-wrap">
-            {/* Reading Mini Progress */}
-            <div className="text-right rtl:text-right ltr:text-left space-y-1">
-              <div className="flex items-center justify-between gap-3 text-xs">
-                <span className="text-slate-300">{language === 'ar' ? 'المقروءة:' : 'Read:'}</span>
-                <span className="font-bold text-white">
-                  %{lectures.length > 0 ? Math.round((readLectureIds.length / lectures.length) * 100) : 0}
-                </span>
+          {/* Desktop view: full stats layout */}
+          <div className="hidden md:flex items-center justify-between gap-4">
+            <div className="flex items-center gap-3">
+              <div className="w-11 h-11 rounded-xl bg-white/10 border border-white/20 flex items-center justify-center shrink-0">
+                <TrendingUp className="w-5 h-5 text-blue-300" />
               </div>
-              <div className="w-28 sm:w-36 bg-white/20 rounded-full h-2 overflow-hidden">
-                <div 
-                  className="bg-blue-400 h-full rounded-full transition-all duration-500"
-                  style={{ width: `${lectures.length > 0 ? (readLectureIds.length / lectures.length) * 100 : 0}%` }}
-                />
+              <div>
+                <div className="flex items-center gap-2">
+                  <h3 className="text-sm font-bold text-white">
+                    {language === 'ar' ? 'إحصائيات الإنجاز الأكاديمي' : 'Academic Progress Overview'}
+                  </h3>
+                  <span className="text-[10px] bg-blue-500/30 px-2 py-0.5 rounded-full border border-blue-400/30 font-bold text-blue-200">
+                    Dashboard
+                  </span>
+                </div>
+                <p className="text-xs text-blue-200">
+                  {language === 'ar' 
+                    ? `${readLectureIds.length} من ${lectures.length} محاضرة مقروءة`
+                    : `${readLectureIds.length} of ${lectures.length} lectures studied`}
+                </p>
               </div>
             </div>
 
-            {/* Quiz Rate */}
-            {attemptsList.length > 0 && (
-              <div className="text-right rtl:text-right ltr:text-left">
-                <span className="text-xs text-slate-300 block">{language === 'ar' ? 'نسبة النجاح:' : 'Success rate:'}</span>
-                <span className="font-bold text-emerald-400 text-sm">
-                  %{quizSuccessRate}
-                </span>
+            <div className="flex items-center gap-6 justify-end flex-wrap">
+              {/* Reading Mini Progress */}
+              <div className="text-right rtl:text-right ltr:text-left space-y-1">
+                <div className="flex items-center justify-between gap-3 text-xs">
+                  <span className="text-slate-300">{language === 'ar' ? 'المقروءة:' : 'Read:'}</span>
+                  <span className="font-bold text-white">
+                    %{lectures.length > 0 ? Math.round((readLectureIds.length / lectures.length) * 100) : 0}
+                  </span>
+                </div>
+                <div className="w-36 bg-white/20 rounded-full h-2 overflow-hidden">
+                  <div 
+                    className="bg-blue-400 h-full rounded-full transition-all duration-500"
+                    style={{ width: `${lectures.length > 0 ? (readLectureIds.length / lectures.length) * 100 : 0}%` }}
+                  />
+                </div>
               </div>
-            )}
 
-            {onOpenDashboard && (
-              <button
-                type="button"
-                id="btn-open-full-dashboard-from-lectures"
-                onClick={onOpenDashboard}
-                className="px-3.5 py-2 rounded-xl bg-blue-600 hover:bg-blue-500 text-white text-xs font-bold transition-colors flex items-center gap-1.5 whitespace-nowrap shrink-0 shadow-xs"
-              >
-                <BarChart3 className="w-4 h-4 text-blue-200" />
-                <span>{language === 'ar' ? 'لوحة الإحصائيات' : 'Open Dashboard'}</span>
-              </button>
-            )}
+              {/* Quiz Rate */}
+              {attemptsList.length > 0 && (
+                <div className="text-right rtl:text-right ltr:text-left">
+                  <span className="text-xs text-slate-300 block">{language === 'ar' ? 'نسبة النجاح:' : 'Success rate:'}</span>
+                  <span className="font-bold text-emerald-400 text-sm">
+                    %{quizSuccessRate}
+                  </span>
+                </div>
+              )}
+
+              {onOpenDashboard && (
+                <button
+                  type="button"
+                  id="btn-open-full-dashboard-from-lectures"
+                  onClick={onOpenDashboard}
+                  className="px-3.5 py-2 rounded-xl bg-blue-600 hover:bg-blue-500 text-white text-xs font-bold transition-colors flex items-center gap-1.5 whitespace-nowrap shrink-0 shadow-xs"
+                >
+                  <BarChart3 className="w-4 h-4 text-blue-200" />
+                  <span>{language === 'ar' ? 'لوحة الإحصائيات' : 'Open Dashboard'}</span>
+                </button>
+              )}
+            </div>
           </div>
         </div>
       )}

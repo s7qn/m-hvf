@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { Navbar } from './components/Navbar';
+import { MobileBottomNav } from './components/MobileBottomNav';
 import { Footer } from './components/Footer';
 import { LecturesView } from './components/LecturesView';
 import { SummariesView } from './components/SummariesView';
@@ -237,7 +238,7 @@ export default function App() {
         />
 
         {/* Main Content Area */}
-        <main className="flex-1 max-w-7xl w-full mx-auto px-3 sm:px-6 py-5 sm:py-8">
+        <main className="flex-1 max-w-7xl w-full mx-auto px-3 sm:px-6 py-4 sm:py-8 pb-24 md:pb-8">
           {activeTab === 'lectures' && (
             <LecturesView
               lectures={lectures}
@@ -315,6 +316,23 @@ export default function App() {
 
         {/* Dedicated Footer with: صنع بواسطة مصطفى احمد وحسن علوان */}
         <Footer language={language} />
+
+        {/* Mobile Sticky Bottom Navigation Bar */}
+        <MobileBottomNav
+          activeTab={activeTab}
+          onTabChange={setActiveTab}
+          language={language}
+          selectedStage={selectedStage}
+          onStageChange={setSelectedStage}
+          isAdminUnlocked={isAdminUnlocked}
+          onOpenAdmin={() => handleOpenAddLecture()}
+          theme={theme}
+          onToggleTheme={handleToggleTheme}
+          onLanguageChange={setLanguage}
+          deviceMode={deviceMode}
+          onDeviceModeChange={handleDeviceModeChange}
+          detectedType={detectedType}
+        />
 
         {/* Secure Quiz Proctored Modal */}
         {activeQuizLecture && (
