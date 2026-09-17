@@ -13,9 +13,11 @@ import {
   BarChart3, 
   Moon, 
   Sun,
-  ChevronDown
+  ChevronDown,
+  User,
+  Flame
 } from 'lucide-react';
-import { Language, Stage, DeviceMode } from '../types';
+import { Language, Stage, DeviceMode, StudentProfile } from '../types';
 import { TRANSLATIONS } from '../data/translations';
 import { DeviceModeSelector } from './DeviceModeSelector';
 import { DetectedDeviceType } from '../hooks/useDeviceDetector';
@@ -34,6 +36,8 @@ interface NavbarProps {
   deviceMode: DeviceMode;
   onDeviceModeChange: (mode: DeviceMode) => void;
   detectedType: DetectedDeviceType;
+  profile?: StudentProfile;
+  streakCount?: number;
 }
 
 export const Navbar: React.FC<NavbarProps> = ({
@@ -50,6 +54,8 @@ export const Navbar: React.FC<NavbarProps> = ({
   deviceMode,
   onDeviceModeChange,
   detectedType,
+  profile,
+  streakCount,
 }) => {
   const t = TRANSLATIONS[language];
 
@@ -78,19 +84,41 @@ export const Navbar: React.FC<NavbarProps> = ({
 
         {/* Mobile Controls: Stage Dropdown Pill, Theme Toggle, Admin, Language */}
         <div className="flex items-center gap-1.5">
+          {/* Student Profile Quick Access */}
+          <button
+            id="mobile-btn-profile"
+            type="button"
+            onClick={() => onTabChange('dashboard')}
+            className={`px-2 py-1.5 rounded-xl border transition-colors shadow-2xs cursor-pointer flex items-center gap-1 ${
+              activeTab === 'dashboard'
+                ? 'bg-blue-600 text-white border-blue-700'
+                : 'bg-white dark:bg-slate-800 text-slate-700 dark:text-slate-200 border-slate-200 dark:border-slate-700'
+            }`}
+            title="لوحة إحصائياتي الخاصة (محفوظة على جهازي)"
+          >
+            <div className="w-4 h-4 rounded-md bg-gradient-to-tr from-blue-600 to-cyan-500 text-white flex items-center justify-center text-[9px] font-black">
+              {profile?.name ? profile.name.slice(0, 1) : 'ط'}
+            </div>
+            {streakCount !== undefined && streakCount > 0 && (
+              <span className="text-[10px] font-black text-amber-500">
+                🔥{streakCount}
+              </span>
+            )}
+          </button>
+
           {/* Fast Stage Selector Pill */}
           <div className="relative flex items-center">
             <select
               id="mobile-stage-select-pill"
               value={selectedStage}
               onChange={(e) => onStageChange(e.target.value === 'all' ? 'all' : Number(e.target.value) as Stage)}
-              className="text-[11px] font-black bg-blue-50 dark:bg-slate-800 text-blue-800 dark:text-blue-300 border border-blue-200 dark:border-slate-700 rounded-xl px-2.5 py-1.5 outline-hidden cursor-pointer shadow-2xs"
+              className="text-[11px] font-black bg-blue-50 dark:bg-slate-800 text-blue-800 dark:text-blue-300 border border-blue-200 dark:border-slate-700 rounded-xl px-2 py-1.5 outline-hidden cursor-pointer shadow-2xs"
             >
-              <option value="all">{language === 'ar' ? 'كل المراحل' : 'All Stages'}</option>
-              <option value="1">{language === 'ar' ? 'المرحلة 1' : 'Stage 1'}</option>
-              <option value="2">{language === 'ar' ? 'المرحلة 2' : 'Stage 2'}</option>
-              <option value="3">{language === 'ar' ? 'المرحلة 3' : 'Stage 3'}</option>
-              <option value="4">{language === 'ar' ? 'المرحلة 4' : 'Stage 4'}</option>
+              <option value="all">{language === 'ar' ? 'المراحل' : 'All'}</option>
+              <option value="1">1</option>
+              <option value="2">2</option>
+              <option value="3">3</option>
+              <option value="4">4</option>
             </select>
           </div>
 
@@ -136,7 +164,7 @@ export const Navbar: React.FC<NavbarProps> = ({
             className="px-2 py-1.5 rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-700 dark:text-slate-200 text-[11px] font-black shadow-2xs cursor-pointer"
             title="Language"
           >
-            {language === 'ar' ? 'EN' : 'عربي'}
+            {language === 'ar' ? 'EN' : 'ع'}
           </button>
         </div>
       </div>
@@ -197,6 +225,31 @@ export const Navbar: React.FC<NavbarProps> = ({
 
             {/* Dedicated Utility Controls (Dark Mode Toggle, Admin Mode, Language) */}
             <div className="flex items-center gap-2.5 shrink-0">
+              {/* Student Personal Profile Button */}
+              <button
+                id="btn-nav-student-profile"
+                type="button"
+                onClick={() => onTabChange('dashboard')}
+                className={`px-3 py-1.5 rounded-xl border text-xs font-bold flex items-center gap-2 transition-all shadow-xs cursor-pointer ${
+                  activeTab === 'dashboard'
+                    ? 'bg-blue-600 text-white border-blue-700 shadow-md shadow-blue-500/20'
+                    : 'bg-white dark:bg-slate-800 hover:bg-blue-50/70 dark:hover:bg-slate-750 text-slate-700 dark:text-slate-200 border-slate-200 dark:border-slate-700 hover:border-blue-300'
+                }`}
+                title="لوحة إحصائياتي الخاصة (محفوظة على جهازي فقط)"
+              >
+                <div className="w-5 h-5 rounded-lg bg-gradient-to-tr from-blue-600 to-cyan-500 text-white flex items-center justify-center text-[10px] font-black shrink-0">
+                  {profile?.name ? profile.name.slice(0, 1) : 'ط'}
+                </div>
+                <span className="font-bold truncate max-w-[120px]">
+                  {profile?.name || (language === 'ar' ? 'إحصائياتي' : 'My Stats')}
+                </span>
+                {streakCount !== undefined && streakCount > 0 && (
+                  <span className="text-[10px] font-black px-1.5 py-0.5 rounded-md bg-amber-100 dark:bg-amber-950 text-amber-800 dark:text-amber-300 flex items-center gap-0.5 shrink-0">
+                    🔥 {streakCount}
+                  </span>
+                )}
+              </button>
+
               {/* Dark Mode Toggle Button */}
               <button
                 id="btn-theme-toggle"

@@ -19,10 +19,12 @@ import {
   INITIAL_EXAMS, 
   INITIAL_SCHEDULE 
 } from './data/initialData';
-import { Lecture, QuizAttempt, Stage, Language, DeviceMode } from './types';
+import { Lecture, QuizAttempt, Stage, Language, DeviceMode, Summary, ExamQuestionPaper, ScheduleItem } from './types';
 import { TRANSLATIONS } from './data/translations';
 import { useDeviceDetector } from './hooks/useDeviceDetector';
 import { DeviceFrame } from './components/DeviceFrame';
+import { setFavicon, PLATFORM_LOGO_SVG, PLATFORM_AWAY_LOGO_SVG } from './utils/tabVisibility';
+import { useStudentProgress } from './hooks/useStudentProgress';
 
 export default function App() {
   // Automatic Device Detection Hook
@@ -41,6 +43,19 @@ export default function App() {
     setDeviceMode(mode);
     localStorage.setItem('saytara_device_mode', mode);
   };
+
+  // Student Local Device Progress Hook (Saved locally on student's machine/browser)
+  const {
+    profile,
+    updateProfile,
+    studyDays,
+    studyMinutes,
+    streakCount,
+    recordActivityToday,
+    exportStudentBackup,
+    importStudentBackup,
+    resetStudentProgress,
+  } = useStudentProgress();
 
   // Theme state (Dark Mode / Light Mode)
   const [theme, setTheme] = useState<'light' | 'dark'>(() => {
@@ -79,14 +94,13 @@ export default function App() {
   // Academic Stage Filter
   const [selectedStage, setSelectedStage] = useState<Stage | 'all'>('all');
 
-  // Dynamic Data with LocalStorage Persistence
+  // Dynamic Lectures with LocalStorage Persistence
   const [lectures, setLectures] = useState<Lecture[]>(() => {
     try {
       const saved = localStorage.getItem('saytara_lectures');
       if (saved) {
         const parsed = JSON.parse(saved);
         if (Array.isArray(parsed)) {
-          // Exclude any legacy mock lectures for control theory or empty subjects
           const cleaned = parsed.filter((l: Lecture) => !l.id?.startsWith('lec-ct-'));
           return cleaned;
         }
@@ -97,6 +111,49 @@ export default function App() {
     return INITIAL_LECTURES;
   });
 
+  // Dynamic Summaries with LocalStorage Persistence
+  const [summaries, setSummaries] = useState<Summary[]>(() => {
+    try {
+      const saved = localStorage.getItem('saytara_summaries');
+      if (saved) {
+        const parsed = JSON.parse(saved);
+        if (Array.isArray(parsed)) return parsed;
+      }
+    } catch {
+      // fallback
+    }
+    return INITIAL_SUMMARIES;
+  });
+
+  // Dynamic Exams with LocalStorage Persistence
+  const [exams, setExams] = useState<ExamQuestionPaper[]>(() => {
+    try {
+      const saved = localStorage.getItem('saytara_exams');
+      if (saved) {
+        const parsed = JSON.parse(saved);
+        if (Array.isArray(parsed)) return parsed;
+      }
+    } catch {
+      // fallback
+    }
+    return INITIAL_EXAMS;
+  });
+
+  // Dynamic Schedule with LocalStorage Persistence
+  const [schedule, setSchedule] = useState<ScheduleItem[]>(() => {
+    try {
+      const saved = localStorage.getItem('saytara_schedule');
+      if (saved) {
+        const parsed = JSON.parse(saved);
+        if (Array.isArray(parsed)) return parsed;
+      }
+    } catch {
+      // fallback
+    }
+    return INITIAL_SCHEDULE;
+  });
+
+  // Student Quiz Attempts (Saved on Student Device)
   const [quizAttempts, setQuizAttempts] = useState<Record<string, QuizAttempt>>(() => {
     try {
       const saved = localStorage.getItem('saytara_attempts');
@@ -107,7 +164,7 @@ export default function App() {
     return {};
   });
 
-  // Track student read lectures
+  // Student Read Lectures List (Saved on Student Device)
   const [readLectureIds, setReadLectureIds] = useState<string[]>(() => {
     try {
       const saved = localStorage.getItem('saytara_read_lectures');
@@ -126,14 +183,16 @@ export default function App() {
       localStorage.setItem('saytara_read_lectures', JSON.stringify(updated));
       return updated;
     });
+    recordActivityToday(15);
   };
 
-  // Admin lock state: "خيار لي فقط لاضافة الملازم الدراسية"
+  // Admin lock state: "امكانية الاضافة في خانة الملخصات والجداول والاسئلة والامتحانات لي فقط من خلال الرمز السري"
   const [isAdminUnlocked, setIsAdminUnlocked] = useState<boolean>(() => {
     return sessionStorage.getItem('saytara_admin_unlocked') === 'true';
   });
   const [showAdminModal, setShowAdminModal] = useState<boolean>(false);
   const [adminInitialSubjectId, setAdminInitialSubjectId] = useState<string | undefined>(undefined);
+  const [adminInitialTab, setAdminInitialTab] = useState<'lectures' | 'summaries' | 'schedule' | 'exams'>('lectures');
 
   // Active Quiz Modal state
   const [activeQuizLecture, setActiveQuizLecture] = useState<Lecture | null>(null);
@@ -141,36 +200,63 @@ export default function App() {
   // Active Lecture Preview Modal state
   const [viewingLecture, setViewingLecture] = useState<Lecture | null>(null);
 
-  // 1. Requirement: "وعند الانتقال لتبويب اخر حول اسم التبويب الى السيطرة تفتقدك"
+  // --------------------------------------------------------------------------
+  // TAB VISIBILITY & LOGO SWITCHING (User Requirement):
+  // "ومن يغادر احد المنصة حول اسم التبويب الى السيطرة تفتقدك وغير لوغو التبويب عند المغادرة لجعله نفس لوغو المنصة"
+  // --------------------------------------------------------------------------
   useEffect(() => {
     const defaultTitle = language === 'ar' 
       ? 'منصة سيطرة | هندسة تقنيات السيطرة والأتمتة' 
       : 'Saytara Platform | Control & Automation Eng.';
 
+    const awayTitle = language === 'ar'
+      ? 'السيطرة تفتقدك'
+      : 'Saytara Misses You!';
+
+    setFavicon(PLATFORM_LOGO_SVG);
+    document.title = defaultTitle;
+
     const handleVisibilityChange = () => {
       if (document.hidden) {
-        document.title = 'السيطرة تفتقدك ⚠️';
+        document.title = awayTitle;
+        setFavicon(PLATFORM_AWAY_LOGO_SVG);
       } else {
         document.title = defaultTitle;
+        setFavicon(PLATFORM_LOGO_SVG);
       }
     };
 
+    const handleWindowBlur = () => {
+      document.title = awayTitle;
+      setFavicon(PLATFORM_AWAY_LOGO_SVG);
+    };
+
+    const handleWindowFocus = () => {
+      document.title = defaultTitle;
+      setFavicon(PLATFORM_LOGO_SVG);
+    };
+
     document.addEventListener('visibilitychange', handleVisibilityChange);
-    document.title = defaultTitle;
+    window.addEventListener('blur', handleWindowBlur);
+    window.addEventListener('focus', handleWindowFocus);
 
     return () => {
       document.removeEventListener('visibilitychange', handleVisibilityChange);
+      window.removeEventListener('blur', handleWindowBlur);
+      window.removeEventListener('focus', handleWindowFocus);
     };
   }, [language]);
 
-  // 2. Sync html dir and lang attribute
+  // Sync html dir and lang attribute
   useEffect(() => {
     document.documentElement.dir = language === 'ar' ? 'rtl' : 'ltr';
     document.documentElement.lang = language;
     localStorage.setItem('saytara_lang', language);
   }, [language]);
 
-  // Save lectures changes
+  // --------------------------------------------------------------------------
+  // CONTENT MANAGEMENT HANDLERS (Admin Only - Passcode Protected)
+  // --------------------------------------------------------------------------
   const handleAddLecture = (newLecture: Lecture) => {
     setLectures(prev => {
       const updated = [newLecture, ...prev];
@@ -179,7 +265,6 @@ export default function App() {
     });
   };
 
-  // Delete custom lecture
   const handleDeleteLecture = (lectureId: string) => {
     setLectures(prev => {
       const updated = prev.filter(l => l.id !== lectureId);
@@ -188,12 +273,61 @@ export default function App() {
     });
   };
 
-  const handleOpenAddLecture = (subjectId?: string) => {
+  const handleAddSummary = (newSummary: Summary) => {
+    setSummaries(prev => {
+      const updated = [newSummary, ...prev];
+      localStorage.setItem('saytara_summaries', JSON.stringify(updated));
+      return updated;
+    });
+  };
+
+  const handleDeleteSummary = (summaryId: string) => {
+    setSummaries(prev => {
+      const updated = prev.filter(s => s.id !== summaryId);
+      localStorage.setItem('saytara_summaries', JSON.stringify(updated));
+      return updated;
+    });
+  };
+
+  const handleAddScheduleItem = (newItem: ScheduleItem) => {
+    setSchedule(prev => {
+      const updated = [newItem, ...prev];
+      localStorage.setItem('saytara_schedule', JSON.stringify(updated));
+      return updated;
+    });
+  };
+
+  const handleDeleteScheduleItem = (itemId: string) => {
+    setSchedule(prev => {
+      const updated = prev.filter(s => s.id !== itemId);
+      localStorage.setItem('saytara_schedule', JSON.stringify(updated));
+      return updated;
+    });
+  };
+
+  const handleAddExam = (newExam: ExamQuestionPaper) => {
+    setExams(prev => {
+      const updated = [newExam, ...prev];
+      localStorage.setItem('saytara_exams', JSON.stringify(updated));
+      return updated;
+    });
+  };
+
+  const handleDeleteExam = (examId: string) => {
+    setExams(prev => {
+      const updated = prev.filter(e => e.id !== examId);
+      localStorage.setItem('saytara_exams', JSON.stringify(updated));
+      return updated;
+    });
+  };
+
+  const handleOpenAdminTab = (tab: 'lectures' | 'summaries' | 'schedule' | 'exams', subjectId?: string) => {
+    setAdminInitialTab(tab);
     setAdminInitialSubjectId(subjectId);
     setShowAdminModal(true);
   };
 
-  // Save quiz attempt
+  // Save student quiz attempt
   const handleSaveAttempt = (attempt: QuizAttempt) => {
     setQuizAttempts(prev => {
       const updated = {
@@ -203,11 +337,35 @@ export default function App() {
       localStorage.setItem('saytara_attempts', JSON.stringify(updated));
       return updated;
     });
+    recordActivityToday(20);
   };
 
   const handleUnlockAdmin = () => {
     setIsAdminUnlocked(true);
     sessionStorage.setItem('saytara_admin_unlocked', 'true');
+  };
+
+  // Full reset of student progress on this device
+  const handleFullReset = () => {
+    resetStudentProgress();
+    setReadLectureIds([]);
+    setQuizAttempts({});
+  };
+
+  // Import backup file
+  const handleImportBackup = (jsonString: string) => {
+    const success = importStudentBackup(jsonString);
+    if (success) {
+      try {
+        const savedReads = localStorage.getItem('saytara_read_lectures');
+        if (savedReads) setReadLectureIds(JSON.parse(savedReads));
+        const savedAttempts = localStorage.getItem('saytara_attempts');
+        if (savedAttempts) setQuizAttempts(JSON.parse(savedAttempts));
+      } catch (e) {
+        console.error(e);
+      }
+    }
+    return success;
   };
 
   const t = TRANSLATIONS[language];
@@ -220,7 +378,7 @@ export default function App() {
       language={language}
     >
       <div className="min-h-screen flex flex-col bg-slate-50 dark:bg-[#0b1329] text-slate-800 dark:text-slate-100 antialiased selection:bg-blue-600 selection:text-white transition-colors duration-200">
-        {/* Sticky Navbar */}
+        {/* Sticky Navbar with Student Profile & Streak Display */}
         <Navbar
           language={language}
           onLanguageChange={setLanguage}
@@ -228,13 +386,15 @@ export default function App() {
           onTabChange={setActiveTab}
           selectedStage={selectedStage}
           onStageChange={setSelectedStage}
-          onOpenAdmin={() => handleOpenAddLecture()}
+          onOpenAdmin={() => handleOpenAdminTab('lectures')}
           isAdminUnlocked={isAdminUnlocked}
           theme={theme}
           onToggleTheme={handleToggleTheme}
           deviceMode={deviceMode}
           onDeviceModeChange={handleDeviceModeChange}
           detectedType={detectedType}
+          profile={profile}
+          streakCount={streakCount}
         />
 
         {/* Main Content Area */}
@@ -247,21 +407,27 @@ export default function App() {
               language={language}
               onSelectLectureToView={(lec) => {
                 setViewingLecture(lec);
-                // Auto mark as read when viewed if not already marked
+                recordActivityToday(10);
                 if (!readLectureIds.includes(lec.id)) {
                   handleToggleReadLecture(lec.id);
                 }
               }}
               onStartQuiz={(lec) => setActiveQuizLecture(lec)}
-              onOpenAddCustomLecture={handleOpenAddLecture}
+              onOpenAddCustomLecture={(subId) => handleOpenAdminTab('lectures', subId)}
               onDeleteLecture={handleDeleteLecture}
               readLectureIds={readLectureIds}
               onToggleReadLecture={handleToggleReadLecture}
               quizAttempts={quizAttempts}
-              onOpenDashboard={() => setActiveTab('dashboard')}
+              onOpenDashboard={() => {
+                setActiveTab('dashboard');
+                recordActivityToday(5);
+              }}
             />
           )}
 
+          {/* Student Private Statistics Dashboard:
+              "سوي لكل طالب لوحة احصائيات خاصة بي بس هو يكدر يشوفها واحفظ تقدم الطالب بالمنصة ولا تفقده لمن يغادرها ويكون الحفظ في جهاز الطالب"
+          */}
           {activeTab === 'dashboard' && (
             <StudentDashboard
               lectures={lectures}
@@ -273,32 +439,48 @@ export default function App() {
               onNavigateToLectures={() => setActiveTab('lectures')}
               onNavigateToQuizzes={() => setActiveTab('quizzes')}
               onStartQuiz={(lec) => setActiveQuizLecture(lec)}
+              profile={profile}
+              onUpdateProfile={updateProfile}
+              streakCount={streakCount}
+              studyMinutes={studyMinutes}
+              onExportBackup={exportStudentBackup}
+              onImportBackup={handleImportBackup}
+              onResetProgress={handleFullReset}
             />
           )}
 
           {activeTab === 'summaries' && (
             <SummariesView
-              summaries={INITIAL_SUMMARIES}
+              summaries={summaries}
               subjects={INITIAL_SUBJECTS}
               selectedStage={selectedStage}
               language={language}
+              isAdminUnlocked={isAdminUnlocked}
+              onOpenAddModal={() => handleOpenAdminTab('summaries')}
+              onDeleteSummary={handleDeleteSummary}
             />
           )}
 
           {activeTab === 'exams' && (
             <ExamsView
-              exams={INITIAL_EXAMS}
+              exams={exams}
               subjects={INITIAL_SUBJECTS}
               selectedStage={selectedStage}
               language={language}
+              isAdminUnlocked={isAdminUnlocked}
+              onOpenAddModal={() => handleOpenAdminTab('exams')}
+              onDeleteExam={handleDeleteExam}
             />
           )}
 
           {activeTab === 'schedule' && (
             <ScheduleView
-              schedule={INITIAL_SCHEDULE}
+              schedule={schedule}
               selectedStage={selectedStage}
               language={language}
+              isAdminUnlocked={isAdminUnlocked}
+              onOpenAddModal={() => handleOpenAdminTab('schedule')}
+              onDeleteScheduleItem={handleDeleteScheduleItem}
             />
           )}
 
@@ -314,24 +496,29 @@ export default function App() {
           )}
         </main>
 
-        {/* Dedicated Footer with: صنع بواسطة مصطفى احمد وحسن علوان */}
+        {/* Dedicated Footer */}
         <Footer language={language} />
 
         {/* Mobile Sticky Bottom Navigation Bar */}
         <MobileBottomNav
           activeTab={activeTab}
-          onTabChange={setActiveTab}
+          onTabChange={(tab) => {
+            setActiveTab(tab);
+            if (tab === 'dashboard') recordActivityToday(5);
+          }}
           language={language}
           selectedStage={selectedStage}
           onStageChange={setSelectedStage}
           isAdminUnlocked={isAdminUnlocked}
-          onOpenAdmin={() => handleOpenAddLecture()}
+          onOpenAdmin={() => handleOpenAdminTab(activeTab === 'summaries' ? 'summaries' : activeTab === 'schedule' ? 'schedule' : activeTab === 'exams' ? 'exams' : 'lectures')}
           theme={theme}
           onToggleTheme={handleToggleTheme}
           onLanguageChange={setLanguage}
           deviceMode={deviceMode}
           onDeviceModeChange={handleDeviceModeChange}
           detectedType={detectedType}
+          profile={profile}
+          streakCount={streakCount}
         />
 
         {/* Secure Quiz Proctored Modal */}
@@ -365,7 +552,7 @@ export default function App() {
           />
         )}
 
-        {/* Admin Add Course Notes Modal: "خياري فقط لاضافة الملازم الدراسية" */}
+        {/* Admin Add Course Notes Modal: Passcode Protected */}
         {showAdminModal && (
           <AdminAddModal
             subjects={INITIAL_SUBJECTS}
@@ -377,7 +564,11 @@ export default function App() {
               setAdminInitialSubjectId(undefined);
             }}
             onAddLecture={handleAddLecture}
+            onAddSummary={handleAddSummary}
+            onAddScheduleItem={handleAddScheduleItem}
+            onAddExam={handleAddExam}
             initialSubjectId={adminInitialSubjectId}
+            initialTab={adminInitialTab}
           />
         )}
       </div>

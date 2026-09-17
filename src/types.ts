@@ -130,3 +130,13 @@ export interface QuizAttempt {
   passed: boolean;
   timeSpentSeconds: number;
 }
+
+export interface StudentProfile {
+  name: string;
+  universityId?: string;
+  stage: Stage;
+  group: 'A' | 'B';
+  avatarId: string;
+  joinedDate: string;
+  dailyGoalMinutes: number;
+}

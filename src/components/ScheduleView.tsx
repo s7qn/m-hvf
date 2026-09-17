@@ -7,7 +7,10 @@ import {
   BookOpen, 
   CheckCircle, 
   Laptop, 
-  Layers
+  Layers,
+  Plus,
+  Lock,
+  Trash2
 } from 'lucide-react';
 import { ScheduleItem, Stage, Language } from '../types';
 import { TRANSLATIONS } from '../data/translations';
@@ -16,6 +19,9 @@ interface ScheduleViewProps {
   schedule: ScheduleItem[];
   selectedStage: Stage | 'all';
   language: Language;
+  isAdminUnlocked?: boolean;
+  onOpenAddModal?: () => void;
+  onDeleteScheduleItem?: (id: string) => void;
 }
 
 const DAYS = [
@@ -30,6 +36,9 @@ export const ScheduleView: React.FC<ScheduleViewProps> = ({
   schedule,
   selectedStage,
   language,
+  isAdminUnlocked = false,
+  onOpenAddModal,
+  onDeleteScheduleItem,
 }) => {
   const t = TRANSLATIONS[language];
   const [selectedDay, setSelectedDay] = useState<number>(0);
@@ -58,33 +67,46 @@ export const ScheduleView: React.FC<ScheduleViewProps> = ({
           </p>
         </div>
 
-        {/* Group Selector */}
-        <div className="flex items-center gap-2 text-xs font-bold bg-slate-50 dark:bg-slate-800 p-1.5 rounded-xl border border-slate-200 dark:border-slate-700">
-          <span className="text-slate-500 dark:text-slate-400 px-2">{t.group}:</span>
-          <button
-            onClick={() => setSelectedGroup('A')}
-            className={`px-3 py-1 rounded-lg transition-colors cursor-pointer ${
-              selectedGroup === 'A' ? 'bg-blue-600 text-white shadow-xs' : 'text-slate-700 dark:text-slate-300 hover:bg-slate-200 dark:hover:bg-slate-700'
-            }`}
-          >
-            {language === 'ar' ? 'الشعبة A' : 'Group A'}
-          </button>
-          <button
-            onClick={() => setSelectedGroup('B')}
-            className={`px-3 py-1 rounded-lg transition-colors cursor-pointer ${
-              selectedGroup === 'B' ? 'bg-blue-600 text-white shadow-xs' : 'text-slate-700 dark:text-slate-300 hover:bg-slate-200 dark:hover:bg-slate-700'
-            }`}
-          >
-            {language === 'ar' ? 'الشعبة B' : 'Group B'}
-          </button>
-          <button
-            onClick={() => setSelectedGroup('الكل')}
-            className={`px-3 py-1 rounded-lg transition-colors cursor-pointer ${
-              selectedGroup === 'الكل' ? 'bg-blue-600 text-white shadow-xs' : 'text-slate-700 dark:text-slate-300 hover:bg-slate-200 dark:hover:bg-slate-700'
-            }`}
-          >
-            {language === 'ar' ? 'الكل' : 'All'}
-          </button>
+        <div className="flex items-center gap-3 flex-wrap">
+          {/* Group Selector */}
+          <div className="flex items-center gap-2 text-xs font-bold bg-slate-50 dark:bg-slate-800 p-1.5 rounded-xl border border-slate-200 dark:border-slate-700">
+            <span className="text-slate-500 dark:text-slate-400 px-2">{t.group}:</span>
+            <button
+              onClick={() => setSelectedGroup('A')}
+              className={`px-3 py-1 rounded-lg transition-colors cursor-pointer ${
+                selectedGroup === 'A' ? 'bg-blue-600 text-white shadow-xs' : 'text-slate-700 dark:text-slate-300 hover:bg-slate-200 dark:hover:bg-slate-700'
+              }`}
+            >
+              {language === 'ar' ? 'الشعبة A' : 'Group A'}
+            </button>
+            <button
+              onClick={() => setSelectedGroup('B')}
+              className={`px-3 py-1 rounded-lg transition-colors cursor-pointer ${
+                selectedGroup === 'B' ? 'bg-blue-600 text-white shadow-xs' : 'text-slate-700 dark:text-slate-300 hover:bg-slate-200 dark:hover:bg-slate-700'
+              }`}
+            >
+              {language === 'ar' ? 'الشعبة B' : 'Group B'}
+            </button>
+            <button
+              onClick={() => setSelectedGroup('الكل')}
+              className={`px-3 py-1 rounded-lg transition-colors cursor-pointer ${
+                selectedGroup === 'الكل' ? 'bg-blue-600 text-white shadow-xs' : 'text-slate-700 dark:text-slate-300 hover:bg-slate-200 dark:hover:bg-slate-700'
+              }`}
+            >
+              {language === 'ar' ? 'الكل' : 'All'}
+            </button>
+          </div>
+
+          {/* Admin Add Schedule Button */}
+          {onOpenAddModal && (
+            <button
+              onClick={onOpenAddModal}
+              className="px-4 py-2 rounded-xl bg-blue-600 hover:bg-blue-700 text-white text-xs font-black shadow-md shadow-blue-500/20 flex items-center gap-2 transition-all cursor-pointer shrink-0"
+            >
+              {isAdminUnlocked ? <Plus className="w-4 h-4" /> : <Lock className="w-3.5 h-3.5 text-blue-200" />}
+              <span>{language === 'ar' ? 'إضافة محاضرة للجدول' : 'Add to Schedule'}</span>
+            </button>
+          )}
         </div>
       </div>
 
@@ -114,11 +136,21 @@ export const ScheduleView: React.FC<ScheduleViewProps> = ({
           <h3 className="text-base font-bold text-slate-700 dark:text-slate-200">
             {language === 'ar' ? 'لا توجد محاضرات مجدولة لهذا اليوم' : 'No lectures scheduled for this day'}
           </h3>
-          <p className="text-xs text-slate-500 dark:text-slate-400">
+          <p className="text-xs text-slate-500 dark:text-slate-400 max-w-sm mx-auto">
             {language === 'ar'
-              ? 'يمكنك مراجعة أيام الأسبوع الأخرى أو تبديل الشعبة الدراسية.'
-              : 'Switch between days or check other study groups.'}
+              ? 'يمكنك مراجعة أيام الأسبوع الأخرى أو إضافة محاضرات جديدة للجدول الدراسي.'
+              : 'Switch between days or add new schedule items using the admin panel.'}
           </p>
+
+          {onOpenAddModal && (
+            <button
+              onClick={onOpenAddModal}
+              className="mt-2 px-5 py-2.5 rounded-xl bg-blue-600 hover:bg-blue-700 text-white text-xs font-black shadow-md shadow-blue-500/20 inline-flex items-center gap-2 cursor-pointer transition-all"
+            >
+              {isAdminUnlocked ? <Plus className="w-4 h-4" /> : <Lock className="w-3.5 h-3.5" />}
+              <span>{language === 'ar' ? 'إضافة محاضرة لهذا اليوم (للمشرف)' : 'Add Lecture for Today'}</span>
+            </button>
+          )}
         </div>
       ) : (
         <div className="space-y-3.5">
@@ -165,7 +197,7 @@ export const ScheduleView: React.FC<ScheduleViewProps> = ({
                 </div>
 
                 {/* Room & Instructor Details */}
-                <div className="flex flex-col sm:flex-row md:items-end gap-2.5 sm:gap-3 text-xs text-slate-600 dark:text-slate-300 border-t md:border-t-0 pt-3 md:pt-0 border-slate-100 dark:border-slate-800">
+                <div className="flex flex-col sm:flex-row md:items-center gap-2.5 sm:gap-3 text-xs text-slate-600 dark:text-slate-300 border-t md:border-t-0 pt-3 md:pt-0 border-slate-100 dark:border-slate-800">
                   <div className="flex items-center gap-1.5 bg-slate-50 dark:bg-slate-800/80 px-3 py-1.5 rounded-xl border border-slate-200 dark:border-slate-700">
                     <MapPin className="w-4 h-4 text-blue-600 dark:text-blue-400 shrink-0" />
                     <span className="font-bold text-slate-800 dark:text-slate-200">
@@ -179,6 +211,16 @@ export const ScheduleView: React.FC<ScheduleViewProps> = ({
                       {language === 'ar' ? item.instructorAr : item.instructorEn}
                     </span>
                   </div>
+
+                  {isAdminUnlocked && onDeleteScheduleItem && (
+                    <button
+                      onClick={() => onDeleteScheduleItem(item.id)}
+                      className="p-1.5 rounded-lg text-slate-400 hover:text-red-600 hover:bg-red-50 dark:hover:bg-red-950/40 transition-colors"
+                      title={language === 'ar' ? 'حذف من الجدول' : 'Delete'}
+                    >
+                      <Trash2 className="w-4 h-4" />
+                    </button>
+                  )}
                 </div>
               </div>
             );

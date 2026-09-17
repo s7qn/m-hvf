@@ -21,7 +21,7 @@ import {
   ChevronRight,
   Check
 } from 'lucide-react';
-import { Stage, Language, DeviceMode } from '../types';
+import { Stage, Language, DeviceMode, StudentProfile } from '../types';
 import { TRANSLATIONS } from '../data/translations';
 import { DetectedDeviceType } from '../hooks/useDeviceDetector';
 
@@ -39,6 +39,8 @@ interface MobileBottomNavProps {
   deviceMode: DeviceMode;
   onDeviceModeChange: (mode: DeviceMode) => void;
   detectedType: DetectedDeviceType;
+  profile?: StudentProfile;
+  streakCount?: number;
 }
 
 export const MobileBottomNav: React.FC<MobileBottomNavProps> = ({
@@ -55,6 +57,8 @@ export const MobileBottomNav: React.FC<MobileBottomNavProps> = ({
   deviceMode,
   onDeviceModeChange,
   detectedType,
+  profile,
+  streakCount,
 }) => {
   const t = TRANSLATIONS[language];
   const [showMoreMenu, setShowMoreMenu] = useState(false);
@@ -220,6 +224,39 @@ export const MobileBottomNav: React.FC<MobileBottomNavProps> = ({
               >
                 <X className="w-4 h-4" />
               </button>
+            </div>
+
+            {/* Student Personal Profile Card in Mobile Sheet */}
+            <div
+              id="mobile-student-profile-banner"
+              onClick={() => {
+                onTabChange('dashboard');
+                setShowMoreMenu(false);
+              }}
+              className="p-3.5 rounded-2xl bg-gradient-to-r from-blue-900 to-indigo-900 text-white flex items-center justify-between gap-3 shadow-md cursor-pointer border border-blue-700/50 hover:opacity-95 transition-opacity"
+            >
+              <div className="flex items-center gap-3">
+                <div className="w-10 h-10 rounded-xl bg-gradient-to-tr from-blue-600 to-cyan-500 text-white flex items-center justify-center text-sm font-black shadow-xs">
+                  {profile?.name ? profile.name.slice(0, 1) : 'ط'}
+                </div>
+                <div>
+                  <h4 className="text-xs font-black text-white leading-tight">
+                    {profile?.name || (language === 'ar' ? 'طالب هندسة السيطرة' : 'Student Profile')}
+                  </h4>
+                  <p className="text-[10px] text-blue-200 mt-0.5">
+                    {language === 'ar' ? `المرحلة ${profile?.stage || 1} • شعبة ${profile?.group || 'A'}` : `Stage ${profile?.stage || 1} • Group ${profile?.group || 'A'}`}
+                  </p>
+                </div>
+              </div>
+
+              <div className="flex items-center gap-1.5 shrink-0">
+                {streakCount !== undefined && streakCount > 0 && (
+                  <span className="text-[10px] font-black px-2 py-0.5 rounded-full bg-amber-500/20 text-amber-300 border border-amber-400/30 flex items-center gap-1">
+                    🔥 {streakCount} {language === 'ar' ? 'أيام' : 'days'}
+                  </span>
+                )}
+                <ChevronRight className="w-4 h-4 text-blue-300 rtl:rotate-180" />
+              </div>
             </div>
 
             {/* Quick Navigation Cards */}
