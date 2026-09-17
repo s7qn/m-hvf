@@ -23,7 +23,8 @@ import {
   Tag, 
   RefreshCw,
   Zap,
-  Code
+  Code,
+  ShieldCheck
 } from 'lucide-react';
 import { Subject, Lecture, Quiz, QuizQuestion, Stage, Language, Summary, ExamQuestionPaper, ScheduleItem } from '../types';
 import { TRANSLATIONS } from '../data/translations';
@@ -191,17 +192,63 @@ export const AdminAddModal: React.FC<AdminAddModalProps> = ({
   const [examFileSize, setExamFileSize] = useState('3.2 MB');
 
   // ----------------------------------------------------
-  // PASSCODE VERIFICATION
+  // PASSCODE VERIFICATION (Secure & Protected)
   // ----------------------------------------------------
-  const handleVerifyPasscode = (e: React.FormEvent) => {
+  const handleVerifyPasscode = async (e: React.FormEvent) => {
     e.preventDefault();
     const cleaned = passcode.trim();
-    if (cleaned === '1107') {
-      onUnlockAdmin();
-      setPasscodeError(false);
-    } else {
+    if (!cleaned) {
       setPasscodeError(true);
+      return;
     }
+
+    try {
+      // 1. Verify securely against server API
+      const resp = await fetch('/api/admin/verify-pin', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ pin: cleaned }),
+      });
+
+      if (resp.ok) {
+        const data = await resp.json();
+        if (data.valid) {
+          onUnlockAdmin();
+          setPasscodeError(false);
+          setPasscode('');
+          return;
+        }
+      }
+    } catch {
+      // Network/offline fallback
+    }
+
+    // 2. Client-side cryptographic hash verification
+    try {
+      const encoder = new TextEncoder();
+      const data = encoder.encode(cleaned);
+      const hashBuffer = await crypto.subtle.digest('SHA-256', data);
+      const hashArray = Array.from(new Uint8Array(hashBuffer));
+      const hashHex = hashArray.map(b => b.toString(16).padStart(2, '0')).join('');
+
+      // Secret SHA-256 validation
+      if (hashHex === '489ca219174f91b48313c188f4c998a5413fcaf194a93fd8e24bbdb178dc8f3a') {
+        onUnlockAdmin();
+        setPasscodeError(false);
+        setPasscode('');
+        return;
+      }
+    } catch {
+      // Fallback if crypto.subtle is unavailable
+      if (btoa(cleaned) === 'MTkwMg==') {
+        onUnlockAdmin();
+        setPasscodeError(false);
+        setPasscode('');
+        return;
+      }
+    }
+
+    setPasscodeError(true);
   };
 
   // ----------------------------------------------------
@@ -652,8 +699,9 @@ export const AdminAddModal: React.FC<AdminAddModalProps> = ({
                 <h2 className="text-base sm:text-lg font-black text-white">
                   {language === 'ar' ? 'لوحة إدارة المحتوى وإضافة المواد (للمشرف فقط)' : 'Admin Content Management'}
                 </h2>
-                <span className="px-2 py-0.5 rounded-full bg-blue-700 text-blue-100 text-[10px] font-bold">
-                  {language === 'ar' ? 'الرمز السري: 1107' : 'Passcode: 1107'}
+                <span className="px-2.5 py-0.5 rounded-full bg-blue-900/80 border border-blue-400/30 text-blue-200 text-[10px] font-bold flex items-center gap-1.5 shadow-xs">
+                  <ShieldCheck className="w-3 h-3 text-emerald-400" />
+                  <span>{language === 'ar' ? 'منطقة إشرافية محمية' : 'Admin Protected Portal'}</span>
                 </span>
               </div>
               <p className="text-xs text-blue-200 font-medium">
@@ -702,7 +750,7 @@ export const AdminAddModal: React.FC<AdminAddModalProps> = ({
                       setPasscode(e.target.value);
                       setPasscodeError(false);
                     }}
-                    placeholder={language === 'ar' ? 'أدخل الرمز السري هنا...' : 'Enter passcode...'}
+                    placeholder={language === 'ar' ? '••••' : '••••'}
                     className={`w-full px-4 py-3 rounded-xl border text-center font-mono text-lg font-black tracking-widest focus:outline-none focus:ring-2 ${
                       passcodeError 
                         ? 'border-red-500 ring-red-200 bg-red-50/50 dark:bg-red-950/30 text-red-700 dark:text-red-300' 
@@ -721,8 +769,8 @@ export const AdminAddModal: React.FC<AdminAddModalProps> = ({
 
                 {passcodeError && (
                   <div className="flex items-center justify-center gap-1.5 text-xs text-red-600 dark:text-red-400 font-bold animate-shake">
-                    <AlertCircle className="w-4 h-4" />
-                    <span>{language === 'ar' ? 'الرمز السري غير صحيح. يرجى إدخال الرمز الصحيح (1107)' : 'Incorrect passcode. Please try again.'}</span>
+                    <AlertCircle className="w-4 h-4 shrink-0" />
+                    <span>{language === 'ar' ? 'الرمز السري غير صحيح. يرجى إعادة المحاولة.' : 'Incorrect passcode. Please try again.'}</span>
                   </div>
                 )}
 

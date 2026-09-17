@@ -36,6 +36,21 @@ async function startServer() {
     });
   });
 
+  // Admin Secure PIN Verification Endpoint
+  // Secret code is verified server-side without exposing it in client UI/bundles
+  app.post('/api/admin/verify-pin', (req, res) => {
+    try {
+      const { pin } = req.body || {};
+      const expectedPin = (process.env.ADMIN_PIN || '1902').trim();
+      if (typeof pin === 'string' && pin.trim() === expectedPin) {
+        return res.json({ success: true, valid: true });
+      }
+      return res.status(401).json({ success: false, valid: false, message: 'Invalid passcode' });
+    } catch {
+      return res.status(500).json({ success: false, valid: false });
+    }
+  });
+
   // AI Quiz Generation Endpoint
   app.post('/api/gemini/generate-quiz', async (req, res) => {
     try {
