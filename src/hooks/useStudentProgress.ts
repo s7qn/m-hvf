@@ -4,7 +4,7 @@ import { StudentProfile, Stage } from '../types';
 const DEFAULT_PROFILE: StudentProfile = {
   name: 'طالب هندسة السيطرة والأتمتة',
   universityId: 'CAE-2024-01',
-  stage: 1,
+  stage: 2,
   group: 'A',
   avatarId: 'circuit',
   joinedDate: new Date().toISOString().split('T')[0],

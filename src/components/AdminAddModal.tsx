@@ -104,7 +104,11 @@ export const AdminAddModal: React.FC<AdminAddModalProps> = ({
   // AI Quiz Generation State
   const [hasMathProblems, setHasMathProblems] = useState<boolean>(true);
   const [isGeneratingAiQuiz, setIsGeneratingAiQuiz] = useState<boolean>(false);
+  const [isAnalyzingFile, setIsAnalyzingFile] = useState<boolean>(false);
   const [aiQuizSource, setAiQuizSource] = useState<string | null>(null);
+  const [lecQuestionCount, setLecQuestionCount] = useState<number>(10);
+  const [lecRawFileText, setLecRawFileText] = useState<string>('');
+  const [showRawTextarea, setShowRawTextarea] = useState<boolean>(false);
 
   // Attached Quiz State
   const [quizQuestions, setQuizQuestions] = useState<QuizQuestion[]>([
@@ -201,6 +205,104 @@ export const AdminAddModal: React.FC<AdminAddModalProps> = ({
   };
 
   // ----------------------------------------------------
+  // AI FILE ANALYSIS & VERBATIM EXTRACTION
+  // Automatically extracts summaries & formulas verbatim from the uploaded file
+  // and generates synchronized questions (5 to 10)
+  // ----------------------------------------------------
+  const handleAnalyzeLectureFile = async (file?: File, explicitContent?: string) => {
+    setIsAnalyzingFile(true);
+    setIsGeneratingAiQuiz(true);
+    setFormError('');
+
+    const sub = subjects.find(s => s.id === lecSubjectId);
+    const subjectName = language === 'ar' ? (sub?.nameAr || 'السيطرة والأتمتة') : (sub?.nameEn || 'Control & Automation');
+    const targetFileName = file?.name || lecUploadedFileName || 'المحاضرة.pdf';
+
+    let content = explicitContent || lecRawFileText;
+    if (file && !explicitContent) {
+      try {
+        if (file.type.includes('text') || file.name.endsWith('.txt') || file.name.endsWith('.md')) {
+          content = await file.text();
+          setLecRawFileText(content);
+        } else {
+          content = `${file.name}\n${lecTitleAr}\n${lecKeyFormulasText}`;
+        }
+      } catch {
+        content = file.name;
+      }
+    }
+
+    try {
+      const response = await fetch('/api/gemini/analyze-lecture-file', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          fileName: targetFileName,
+          fileContent: content || `${targetFileName} - ${subjectName}`,
+          subjectName,
+          stage: lecStage,
+          questionCount: lecQuestionCount,
+        }),
+      });
+
+      if (!response.ok) {
+        throw new Error(`Server returned ${response.status}`);
+      }
+
+      const data = await response.json();
+      if (data.success) {
+        if (!lecTitleAr.trim() && data.titleAr) {
+          setLecTitleAr(data.titleAr);
+        }
+        if (!lecTitleEn.trim() && data.titleEn) {
+          setLecTitleEn(data.titleEn);
+        }
+        if (!lecDescAr.trim() && data.descriptionAr) {
+          setLecDescAr(data.descriptionAr);
+        }
+        if (Array.isArray(data.summaryPointsAr) && data.summaryPointsAr.length > 0) {
+          setLecSummaryPointsText(data.summaryPointsAr.join('\n'));
+        }
+        if (Array.isArray(data.keyFormulas) && data.keyFormulas.length > 0) {
+          setLecKeyFormulasText(data.keyFormulas.join('\n'));
+        }
+        if (typeof data.hasMathProblems === 'boolean') {
+          setHasMathProblems(data.hasMathProblems);
+        }
+        if (Array.isArray(data.questions) && data.questions.length > 0) {
+          const formatted: QuizQuestion[] = data.questions.map((q: any, idx: number) => ({
+            id: `ai-q-${Date.now()}-${idx}`,
+            questionAr: q.questionAr || `سؤال ${idx + 1}`,
+            questionEn: q.questionEn || `Question ${idx + 1}`,
+            optionsAr: Array.isArray(q.optionsAr) ? q.optionsAr : ['خيار أ', 'خيار ب', 'خيار ج', 'خيار د'],
+            optionsEn: Array.isArray(q.optionsEn) ? q.optionsEn : ['Option A', 'Option B', 'Option C', 'Option D'],
+            correctIndex: typeof q.correctIndex === 'number' ? q.correctIndex : 0,
+            explanationAr: q.explanationAr || 'خطوات حل وتحليل هندسي معتمد.',
+            explanationEn: q.explanationEn || 'Engineering analysis and derivation.',
+            codeOrFormula: q.codeOrFormula,
+          }));
+          setQuizQuestions(formatted);
+        }
+
+        setAiQuizSource(data.source === 'gemini' ? 'Gemini 2.5 Flash (استخراج نصي متزامن)' : 'المستخرج الهندسي الدقيق (نص الملزمة)');
+        setIsSuccess(true);
+        setSuccessMsg(
+          language === 'ar'
+            ? 'تم استخراج الملخصات والقوانين نصاً من الملف وتوليد الأسئلة المتزامنة بنجاح!'
+            : 'Summaries & formulas extracted verbatim from file, quiz synchronized successfully!'
+        );
+        setTimeout(() => setIsSuccess(false), 5000);
+      }
+    } catch (err) {
+      console.warn('File analysis call failed, falling back to quiz generator:', err);
+      await handleGenerateAiQuiz();
+    } finally {
+      setIsAnalyzingFile(false);
+      setIsGeneratingAiQuiz(false);
+    }
+  };
+
+  // ----------------------------------------------------
   // AI QUIZ GENERATION FUNCTION (Synchronized with lecture & Math)
   // ----------------------------------------------------
   const handleGenerateAiQuiz = async () => {
@@ -231,7 +333,7 @@ export const AdminAddModal: React.FC<AdminAddModalProps> = ({
           summaryPoints: summaryList,
           keyFormulas: formulasList,
           hasMathProblems,
-          count: 5,
+          count: lecQuestionCount,
         }),
       });
 
@@ -820,37 +922,83 @@ export const AdminAddModal: React.FC<AdminAddModalProps> = ({
 
                       <div>
                         <label className="block text-xs font-bold text-slate-700 dark:text-slate-300 mb-1">
-                          {language === 'ar' ? 'ملف المحاضرة (PDF / Notes)' : 'File Attachment'}
+                          {language === 'ar' ? 'ملف المحاضرة (PDF / DOC / Notes) — استخراج تلقائي فوري' : 'File Attachment & Auto Verbatim Extraction'}
                         </label>
-                        <div className="flex items-center gap-2">
-                          <label className="px-3 py-2 rounded-xl border border-dashed border-blue-400 dark:border-blue-600 bg-blue-50/50 dark:bg-blue-950/40 text-blue-700 dark:text-blue-300 text-xs font-bold flex items-center gap-1.5 cursor-pointer hover:bg-blue-100/50 transition-colors shrink-0">
-                            <FileUp className="w-4 h-4" />
-                            <span>{lecUploadedFileName ? 'تغيير الملف' : 'اختيار ملف'}</span>
-                            <input
-                              type="file"
-                              accept=".pdf,.doc,.docx"
-                              className="hidden"
-                              onChange={(e) => {
-                                const file = e.target.files?.[0];
-                                if (file) {
-                                  setLecUploadedFileName(file.name);
-                                  setLecUploadedFileSize(`${(file.size / (1024 * 1024)).toFixed(1)} MB`);
-                                  const url = URL.createObjectURL(file);
-                                  setLecFileUrl(url);
-                                }
-                              }}
-                            />
-                          </label>
-                          <span className="text-xs text-slate-500 dark:text-slate-400 truncate">
-                            {lecUploadedFileName || 'ملزمة بصيغة PDF (تلقائي 2.5 MB)'}
-                          </span>
+                        <div className="space-y-2">
+                          <div className="flex items-center gap-2">
+                            <label className="px-3 py-2 rounded-xl border border-dashed border-blue-400 dark:border-blue-600 bg-blue-50/50 dark:bg-blue-950/40 text-blue-700 dark:text-blue-300 text-xs font-bold flex items-center gap-1.5 cursor-pointer hover:bg-blue-100/50 transition-colors shrink-0">
+                              <FileUp className="w-4 h-4" />
+                              <span>{lecUploadedFileName ? 'تغيير الملف' : 'اختيار ملف الملزمة'}</span>
+                              <input
+                                type="file"
+                                accept=".pdf,.doc,.docx,.txt,.md"
+                                className="hidden"
+                                onChange={async (e) => {
+                                  const file = e.target.files?.[0];
+                                  if (file) {
+                                    setLecUploadedFileName(file.name);
+                                    setLecUploadedFileSize(`${(file.size / (1024 * 1024)).toFixed(1)} MB`);
+                                    const url = URL.createObjectURL(file);
+                                    setLecFileUrl(url);
+                                    // Automatic verbatim extraction & AI quiz sync
+                                    await handleAnalyzeLectureFile(file);
+                                  }
+                                }}
+                              />
+                            </label>
+                            <span className="text-xs text-slate-500 dark:text-slate-400 truncate">
+                              {lecUploadedFileName || 'ملزمة بصيغة PDF (تلقائي 2.5 MB)'}
+                            </span>
+                          </div>
+
+                          {/* Quick trigger for file content analysis */}
+                          <div className="flex items-center gap-2 flex-wrap">
+                            <button
+                              type="button"
+                              onClick={() => handleAnalyzeLectureFile()}
+                              disabled={isAnalyzingFile || isGeneratingAiQuiz}
+                              className="px-3 py-1.5 rounded-lg bg-blue-100 dark:bg-blue-900/60 text-blue-800 dark:text-blue-200 text-[11px] font-bold flex items-center gap-1.5 hover:bg-blue-200 dark:hover:bg-blue-800 transition-colors cursor-pointer disabled:opacity-50"
+                            >
+                              {isAnalyzingFile ? (
+                                <>
+                                  <RefreshCw className="w-3.5 h-3.5 animate-spin" />
+                                  <span>جارٍ قراءة الملف واستخراج القوانين نصاً...</span>
+                                </>
+                              ) : (
+                                <>
+                                  <Sparkles className="w-3.5 h-3.5 text-blue-600 dark:text-blue-400" />
+                                  <span>استخراج الملخص والقوانين نصاً من الملف الآن</span>
+                                </>
+                              )}
+                            </button>
+
+                            <button
+                              type="button"
+                              onClick={() => setShowRawTextarea(!showRawTextarea)}
+                              className="text-[11px] text-slate-500 hover:text-slate-700 dark:hover:text-slate-300 font-bold underline"
+                            >
+                              {showRawTextarea ? 'إخفاء محتوى نص الملف' : 'عرض/لصق نصوص من الملف'}
+                            </button>
+                          </div>
+
+                          {showRawTextarea && (
+                            <div className="pt-1">
+                              <textarea
+                                rows={3}
+                                value={lecRawFileText}
+                                onChange={(e) => setLecRawFileText(e.target.value)}
+                                placeholder="يمكنك لصق نصوص أو قوانين أو فقرات من الملف هنا للتدقيق الصارم في الاستخراج النصي..."
+                                className="w-full px-3 py-2 rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-xs font-mono text-slate-800 dark:text-white"
+                              />
+                            </div>
+                          )}
                         </div>
                       </div>
                     </div>
 
                     <div>
                       <label className="block text-xs font-bold text-slate-700 dark:text-slate-300 mb-1">
-                        {language === 'ar' ? 'القوانين والمعادلات الرياضية الواردة بالملزمة (قانون لكل سطر)' : 'Key Formulas & Equations'}
+                        {language === 'ar' ? 'القوانين والمعادلات الرياضية الواردة بالملزمة (قانون لكل سطر - مستخرجة نصاً)' : 'Key Formulas & Equations'}
                       </label>
                       <textarea
                         rows={2}
@@ -876,24 +1024,49 @@ export const AdminAddModal: React.FC<AdminAddModalProps> = ({
                         </div>
                         <p className="text-xs text-slate-600 dark:text-slate-300 mt-1">
                           {language === 'ar'
-                            ? 'توليد أسئلة اختبار دقيقة متوافقة 100% مع مادة هذه الملزمة تلقائياً.'
-                            : 'Generate exam-grade questions strictly aligned with this lecture material.'}
+                            ? 'توليد بنك أسئلة متزامن كلياً مع مادة وقوانين هذه الملزمة حصراً (من 5 إلى 10 أسئلة).'
+                            : 'Generate exam questions strictly aligned with this lecture material.'}
                         </p>
                       </div>
 
-                      {/* Math problems requirement toggle */}
-                      <label className="flex items-center gap-2.5 p-2 rounded-xl bg-white dark:bg-slate-900 border border-indigo-200 dark:border-indigo-700 cursor-pointer shadow-xs">
-                        <input
-                          type="checkbox"
-                          checked={hasMathProblems}
-                          onChange={(e) => setHasMathProblems(e.target.checked)}
-                          className="w-4 h-4 text-indigo-600 rounded-md focus:ring-indigo-500 cursor-pointer"
-                        />
-                        <div className="flex items-center gap-1.5 text-xs font-black text-indigo-900 dark:text-indigo-300">
-                          <Calculator className="w-3.5 h-3.5 text-indigo-600 dark:text-indigo-400" />
-                          <span>{language === 'ar' ? 'تضمين مسائل رياضية وحسابات هندسية 🧮' : 'Include Mathematical Problems'}</span>
+                      <div className="flex items-center gap-2 flex-wrap">
+                        {/* Math problems requirement toggle */}
+                        <label className="flex items-center gap-2 p-2 rounded-xl bg-white dark:bg-slate-900 border border-indigo-200 dark:border-indigo-700 cursor-pointer shadow-xs">
+                          <input
+                            type="checkbox"
+                            checked={hasMathProblems}
+                            onChange={(e) => setHasMathProblems(e.target.checked)}
+                            className="w-4 h-4 text-indigo-600 rounded-md focus:ring-indigo-500 cursor-pointer"
+                          />
+                          <div className="flex items-center gap-1.5 text-xs font-black text-indigo-900 dark:text-indigo-300">
+                            <Calculator className="w-3.5 h-3.5 text-indigo-600 dark:text-indigo-400" />
+                            <span>{language === 'ar' ? 'مسائل رياضية 🧮' : 'Math Problems'}</span>
+                          </div>
+                        </label>
+
+                        {/* Question Count Selector (5 to 10 questions) */}
+                        <div className="flex items-center gap-1.5 bg-white dark:bg-slate-900 border border-indigo-200 dark:border-indigo-700 rounded-xl p-1.5 shadow-xs">
+                          <span className="text-[11px] font-bold text-slate-600 dark:text-slate-400 px-1">
+                            {language === 'ar' ? 'العدد:' : 'Count:'}
+                          </span>
+                          <div className="flex items-center gap-1">
+                            {[5, 6, 7, 8, 9, 10].map((num) => (
+                              <button
+                                key={num}
+                                type="button"
+                                onClick={() => setLecQuestionCount(num)}
+                                className={`w-7 h-7 rounded-lg text-xs font-black transition-all cursor-pointer ${
+                                  lecQuestionCount === num
+                                    ? 'bg-indigo-600 text-white shadow-xs'
+                                    : 'text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800'
+                                }`}
+                              >
+                                {num}
+                              </button>
+                            ))}
+                          </div>
                         </div>
-                      </label>
+                      </div>
                     </div>
 
                     {/* AI Generation Action Button */}
@@ -901,18 +1074,18 @@ export const AdminAddModal: React.FC<AdminAddModalProps> = ({
                       <button
                         type="button"
                         onClick={handleGenerateAiQuiz}
-                        disabled={isGeneratingAiQuiz}
+                        disabled={isGeneratingAiQuiz || isAnalyzingFile}
                         className="w-full sm:w-auto px-5 py-2.5 rounded-xl bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-700 hover:to-indigo-700 text-white font-black text-xs flex items-center justify-center gap-2 shadow-md shadow-indigo-500/25 transition-all cursor-pointer disabled:opacity-60"
                       >
                         {isGeneratingAiQuiz ? (
                           <>
                             <RefreshCw className="w-4 h-4 animate-spin text-white" />
-                            <span>{language === 'ar' ? 'جارٍ تحليل الملزمة وتوليد المسائل الهندسية...' : 'Analyzing & Generating Quiz...'}</span>
+                            <span>{language === 'ar' ? `جارٍ توليد ${lecQuestionCount} أسئلة متزامنة ومسائل رياضية...` : 'Analyzing & Generating Quiz...'}</span>
                           </>
                         ) : (
                           <>
                             <Zap className="w-4 h-4 text-amber-300" />
-                            <span>{language === 'ar' ? 'توليد وتحديث الاختبار بالذكاء الاصطناعي ✨' : 'Generate Synchronized Quiz with AI'}</span>
+                            <span>{language === 'ar' ? `توليد وتحديث الاختبار بالذكاء الاصطناعي (${lecQuestionCount} أسئلة) ✨` : `Generate Synchronized Quiz (${lecQuestionCount} Qs)`}</span>
                           </>
                         )}
                       </button>

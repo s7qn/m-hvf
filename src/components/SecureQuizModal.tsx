@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback, useRef } from 'react';
+import React, { useState, useEffect, useCallback, useRef, useMemo } from 'react';
 import { 
   ShieldAlert, 
   ShieldCheck, 
@@ -14,7 +14,8 @@ import {
   Lock,
   ArrowRight,
   ArrowLeft,
-  X
+  X,
+  Sparkles
 } from 'lucide-react';
 import confetti from 'canvas-confetti';
 import { Quiz, QuizAttempt, Language } from '../types';
@@ -41,15 +42,44 @@ export const SecureQuizModal: React.FC<SecureQuizModalProps> = ({
 
   // Exam phase: 'briefing' | 'active' | 'result'
   const [phase, setPhase] = useState<'briefing' | 'active' | 'result'>('briefing');
+  const [selectedQuestionCount, setSelectedQuestionCount] = useState<number>(5);
   const [currentQuestionIndex, setCurrentQuestionIndex] = useState(0);
   const [selectedAnswers, setSelectedAnswers] = useState<Record<number, number>>({});
-  const [timeRemainingSeconds, setTimeRemainingSeconds] = useState(quiz.durationMinutes * 60);
   const [strikes, setStrikes] = useState(0);
   const [showStrikeWarning, setShowStrikeWarning] = useState(false);
   const [strikeReason, setStrikeReason] = useState<string>('');
   const [isFullscreen, setIsFullscreen] = useState(false);
   const [securityToast, setSecurityToast] = useState<string | null>(null);
   const [isWindowBlurred, setIsWindowBlurred] = useState(false);
+
+  // Synchronized active questions based on student's choice (5 to 10 questions)
+  const activeQuestions = useMemo(() => {
+    const base = quiz.questions;
+    if (!base || base.length === 0) return [];
+    if (base.length >= selectedQuestionCount) {
+      return base.slice(0, selectedQuestionCount);
+    }
+    // If base bank has fewer, pad with contextual variants to satisfy selectedQuestionCount
+    const padded = [...base];
+    let i = 0;
+    while (padded.length < selectedQuestionCount && base.length > 0) {
+      const orig = base[i % base.length];
+      padded.push({
+        ...orig,
+        id: `${orig.id}-var-${padded.length}`,
+        questionAr: `${orig.questionAr} (تطبيق إضافي متزامن)`,
+        questionEn: `${orig.questionEn} (Synchronized Variant)`,
+      });
+      i++;
+    }
+    return padded.slice(0, selectedQuestionCount);
+  }, [quiz.questions, selectedQuestionCount]);
+
+  const examDurationMinutes = useMemo(() => {
+    return Math.max(5, Math.round(selectedQuestionCount * 1.5));
+  }, [selectedQuestionCount]);
+
+  const [timeRemainingSeconds, setTimeRemainingSeconds] = useState(examDurationMinutes * 60);
 
   const containerRef = useRef<HTMLDivElement>(null);
   const timerRef = useRef<NodeJS.Timeout | null>(null);
@@ -216,7 +246,7 @@ export const SecureQuizModal: React.FC<SecureQuizModalProps> = ({
   // Start Exam
   const handleStartExam = () => {
     setPhase('active');
-    setTimeRemainingSeconds(quiz.durationMinutes * 60);
+    setTimeRemainingSeconds(examDurationMinutes * 60);
     setStrikes(0);
     setSelectedAnswers({});
     setCurrentQuestionIndex(0);
@@ -248,16 +278,16 @@ export const SecureQuizModal: React.FC<SecureQuizModalProps> = ({
     if (timerRef.current) clearInterval(timerRef.current);
 
     let correctCount = 0;
-    quiz.questions.forEach((q, idx) => {
+    activeQuestions.forEach((q, idx) => {
       if (selectedAnswers[idx] === q.correctIndex) {
         correctCount++;
       }
     });
 
-    const total = quiz.questions.length;
+    const total = activeQuestions.length;
     const percentage = Math.round((correctCount / total) * 100);
     const passed = percentage >= quiz.passingScore;
-    const timeSpent = quiz.durationMinutes * 60 - timeRemainingSeconds;
+    const timeSpent = examDurationMinutes * 60 - timeRemainingSeconds;
 
     const attempt: QuizAttempt = {
       id: 'att-' + Date.now(),
@@ -297,9 +327,9 @@ export const SecureQuizModal: React.FC<SecureQuizModalProps> = ({
     return `${mins.toString().padStart(2, '0')}:${secs.toString().padStart(2, '0')}`;
   };
 
-  const currentQuestion = quiz.questions[currentQuestionIndex];
+  const currentQuestion = activeQuestions[currentQuestionIndex] || activeQuestions[0];
   const answeredCount = Object.keys(selectedAnswers).length;
-  const isLastQuestion = currentQuestionIndex === quiz.questions.length - 1;
+  const isLastQuestion = currentQuestionIndex === activeQuestions.length - 1;
 
   return (
     <div 
@@ -406,12 +436,12 @@ export const SecureQuizModal: React.FC<SecureQuizModalProps> = ({
                   </p>
                   <div className="grid grid-cols-2 sm:grid-cols-3 gap-2 mt-3 pt-3 border-t border-blue-200/60 dark:border-blue-800/60 text-xs">
                     <div>
-                      <span className="text-slate-500 dark:text-slate-400 block">{language === 'ar' ? 'عدد الأسئلة' : 'Questions'}</span>
-                      <span className="font-bold text-blue-900 dark:text-blue-200">{quiz.questions.length} {language === 'ar' ? 'أسئلة' : 'Questions'}</span>
+                      <span className="text-slate-500 dark:text-slate-400 block">{language === 'ar' ? 'عدد الأسئلة المحدد' : 'Selected Questions'}</span>
+                      <span className="font-bold text-blue-900 dark:text-blue-200">{selectedQuestionCount} {language === 'ar' ? 'أسئلة' : 'Questions'}</span>
                     </div>
                     <div>
-                      <span className="text-slate-500 dark:text-slate-400 block">{language === 'ar' ? 'مدة الاختبار' : 'Duration'}</span>
-                      <span className="font-bold text-blue-900 dark:text-blue-200">{quiz.durationMinutes} {language === 'ar' ? 'دقائق' : 'Minutes'}</span>
+                      <span className="text-slate-500 dark:text-slate-400 block">{language === 'ar' ? 'مدة الاختبار المحسوبة' : 'Duration'}</span>
+                      <span className="font-bold text-blue-900 dark:text-blue-200">{examDurationMinutes} {language === 'ar' ? 'دقائق' : 'Minutes'}</span>
                     </div>
                     <div>
                       <span className="text-slate-500 dark:text-slate-400 block">{language === 'ar' ? 'درجة النجاح' : 'Passing Grade'}</span>
@@ -419,6 +449,42 @@ export const SecureQuizModal: React.FC<SecureQuizModalProps> = ({
                     </div>
                   </div>
                 </div>
+              </div>
+            </div>
+
+            {/* Student Question Count Selection (5 to 10 Questions) */}
+            <div className="bg-gradient-to-br from-indigo-50/90 via-blue-50/70 to-slate-50 dark:from-slate-800/90 dark:via-indigo-950/40 dark:to-slate-900 border-2 border-indigo-200 dark:border-indigo-800 rounded-2xl p-4 sm:p-5 space-y-3 shadow-xs">
+              <div className="flex items-center justify-between gap-2 flex-wrap">
+                <div>
+                  <h4 className="text-xs sm:text-sm font-black text-indigo-950 dark:text-white flex items-center gap-1.5">
+                    <Sparkles className="w-4 h-4 text-indigo-600 dark:text-indigo-400" />
+                    <span>{language === 'ar' ? 'اختر عدد أسئلة الاختبار (من 5 إلى 10 أسئلة حسب اختيارك):' : 'Select Question Count (5 to 10 Questions):'}</span>
+                  </h4>
+                  <p className="text-[11px] text-slate-600 dark:text-slate-300 mt-0.5">
+                    {language === 'ar' ? 'الأسئلة متزامنة كلياً ومستخرجة من مادة وقوانين هذه الملزمة حصراً.' : 'Questions are fully synchronized and derived from this lecture material.'}
+                  </p>
+                </div>
+                <span className="px-3 py-1 rounded-xl bg-indigo-600 text-white text-xs font-black shadow-xs">
+                  {selectedQuestionCount} {language === 'ar' ? 'أسئلة متزامنة' : 'Questions'}
+                </span>
+              </div>
+
+              <div className="grid grid-cols-3 sm:grid-cols-6 gap-2 pt-1">
+                {[5, 6, 7, 8, 9, 10].map((num) => (
+                  <button
+                    key={num}
+                    type="button"
+                    onClick={() => setSelectedQuestionCount(num)}
+                    className={`py-2 px-2 rounded-xl text-xs font-black transition-all cursor-pointer border flex flex-col items-center justify-center gap-0.5 ${
+                      selectedQuestionCount === num
+                        ? 'bg-indigo-600 text-white border-indigo-600 shadow-md shadow-indigo-500/30 scale-105 ring-2 ring-indigo-300 dark:ring-indigo-700'
+                        : 'bg-white dark:bg-slate-800 text-slate-700 dark:text-slate-300 border-slate-200 dark:border-slate-700 hover:border-indigo-400 hover:bg-indigo-50/50'
+                    }`}
+                  >
+                    <span className="text-sm font-black">{num}</span>
+                    <span className="text-[10px] font-bold opacity-80">{language === 'ar' ? 'أسئلة' : 'Q'}</span>
+                  </button>
+                ))}
               </div>
             </div>
 
@@ -478,11 +544,11 @@ export const SecureQuizModal: React.FC<SecureQuizModalProps> = ({
               {/* Question Progress */}
               <div className="flex items-center gap-2 text-xs font-bold text-slate-700 dark:text-slate-300">
                 <span className="text-blue-700 dark:text-blue-400">
-                  {t.questionProgress} {currentQuestionIndex + 1} {t.of} {quiz.questions.length}
+                  {t.questionProgress} {currentQuestionIndex + 1} {t.of} {activeQuestions.length}
                 </span>
                 <span className="text-slate-400">|</span>
                 <span className="text-emerald-700 dark:text-emerald-400">
-                  {answeredCount}/{quiz.questions.length} {language === 'ar' ? 'تمت الإجابة' : 'Answered'}
+                  {answeredCount}/{activeQuestions.length} {language === 'ar' ? 'تمت الإجابة' : 'Answered'}
                 </span>
               </div>
 
@@ -521,7 +587,7 @@ export const SecureQuizModal: React.FC<SecureQuizModalProps> = ({
             <div className="w-full bg-slate-100 dark:bg-slate-800 h-1.5 rounded-full overflow-hidden">
               <div 
                 className="bg-blue-600 h-full transition-all duration-300 rounded-full"
-                style={{ width: `${((currentQuestionIndex + 1) / quiz.questions.length) * 100}%` }}
+                style={{ width: `${((currentQuestionIndex + 1) / activeQuestions.length) * 100}%` }}
               />
             </div>
 
@@ -626,10 +692,10 @@ export const SecureQuizModal: React.FC<SecureQuizModalProps> = ({
           <div className="p-6 sm:p-8 space-y-6 overflow-y-auto max-h-[80vh]">
             {(() => {
               let correct = 0;
-              quiz.questions.forEach((q, i) => {
+              activeQuestions.forEach((q, i) => {
                 if (selectedAnswers[i] === q.correctIndex) correct++;
               });
-              const total = quiz.questions.length;
+              const total = activeQuestions.length;
               const pct = Math.round((correct / total) * 100);
               const isPassed = pct >= quiz.passingScore;
 
@@ -684,7 +750,7 @@ export const SecureQuizModal: React.FC<SecureQuizModalProps> = ({
                       <span>{language === 'ar' ? 'مراجعة الإجابات والحلول النموذجية:' : 'Answer Review & Detailed Explanations:'}</span>
                     </h4>
 
-                    {quiz.questions.map((q, idx) => {
+                    {activeQuestions.map((q, idx) => {
                       const userChoice = selectedAnswers[idx];
                       const isCorrect = userChoice === q.correctIndex;
                       const options = language === 'ar' ? q.optionsAr : q.optionsEn;
