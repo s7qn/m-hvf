@@ -305,6 +305,11 @@ export default function App() {
     });
   };
 
+  const handleResetSchedule = () => {
+    setSchedule(INITIAL_SCHEDULE);
+    localStorage.setItem('saytara_schedule', JSON.stringify(INITIAL_SCHEDULE));
+  };
+
   const handleAddExam = (newExam: ExamQuestionPaper) => {
     setExams(prev => {
       const updated = [newExam, ...prev];
@@ -481,6 +486,7 @@ export default function App() {
               isAdminUnlocked={isAdminUnlocked}
               onOpenAddModal={() => handleOpenAdminTab('schedule')}
               onDeleteScheduleItem={handleDeleteScheduleItem}
+              onResetSchedule={handleResetSchedule}
             />
           )}
 
