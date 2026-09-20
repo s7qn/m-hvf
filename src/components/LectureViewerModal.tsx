@@ -167,8 +167,17 @@ export const LectureViewerModal: React.FC<LectureViewerModalProps> = ({
         <div className="p-4 bg-slate-50 border-t border-slate-200 flex flex-wrap items-center justify-between gap-3">
           <div className="flex items-center gap-2 flex-wrap">
             <button
+              id="btn-download-from-viewer-modal"
               onClick={() => {
-                // Simulated direct PDF download
+                if (lecture.fileUrl) {
+                  const a = document.createElement('a');
+                  a.href = lecture.fileUrl;
+                  a.download = `${lecture.titleAr || 'Lecture'}.pdf`;
+                  a.target = '_blank';
+                  a.click();
+                  return;
+                }
+                // Simulated direct text/PDF download
                 const blob = new Blob([
                   `منصة سيطرة - هندسة تقنيات السيطرة والأتمتة\nالمحاضرة: ${lecture.titleAr}\nالأستاذ: ${lecture.instructorAr}\n\nأبرز المحاور:\n${lecture.summaryPointsAr.join('\n')}\n\nصنع بواسطة مصطفى احمد وحسن علوان`
                 ], { type: 'text/plain;charset=utf-8' });
@@ -182,7 +191,7 @@ export const LectureViewerModal: React.FC<LectureViewerModalProps> = ({
               className="px-4 py-2 rounded-xl bg-white hover:bg-slate-100 border border-slate-300 text-slate-700 font-bold text-xs flex items-center gap-1.5 transition-colors shadow-xs"
             >
               <Download className="w-4 h-4 text-blue-600" />
-              <span>{t.downloadPdf}</span>
+              <span>{lecture.fileUrl ? (language === 'ar' ? 'تحميل الملف المرفق' : 'Download File') : t.downloadPdf}</span>
             </button>
 
             {onToggleRead && (

@@ -234,6 +234,16 @@ export const LecturesView: React.FC<LecturesViewProps> = ({
           </div>
 
           <div className="flex items-center gap-3 flex-wrap">
+            {/* Live Shared Sync Indicator */}
+            <div 
+              id="live-sync-indicator-pill"
+              className="flex items-center gap-1.5 px-3 py-2 rounded-xl bg-emerald-50 dark:bg-emerald-950/60 border border-emerald-200 dark:border-emerald-800/80 text-emerald-800 dark:text-emerald-300 text-xs font-black shadow-2xs"
+              title={language === 'ar' ? 'المحاضرات والملازم متزامنة وتظهر لجميع الطلاب على جميع الأجهزة' : 'All materials synced and visible to all students'}
+            >
+              <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse" />
+              <span>{language === 'ar' ? 'مزامنة مباشرة للكل' : 'Live for All Students'}</span>
+            </div>
+
             <div className="flex items-center gap-2 bg-blue-50 dark:bg-blue-950/60 px-3.5 py-2 rounded-xl border border-blue-100 dark:border-blue-900/50 text-xs font-bold text-blue-800 dark:text-blue-300">
               <BookOpen className="w-4 h-4 text-blue-600 dark:text-blue-400" />
               <span>{filteredLectures.length} {t.lectureCount}</span>
@@ -506,6 +516,14 @@ export const LecturesView: React.FC<LecturesViewProps> = ({
                     <button
                       id={`btn-download-lec-${lecture.id}`}
                       onClick={() => {
+                        if (lecture.fileUrl) {
+                          const a = document.createElement('a');
+                          a.href = lecture.fileUrl;
+                          a.download = `${lecture.titleAr || 'Lecture'}.pdf`;
+                          a.target = '_blank';
+                          a.click();
+                          return;
+                        }
                         const blob = new Blob([
                           `منصة سيطرة | المحاضرة رقم ${lecture.lectureNumber}\n${lecture.titleAr}\nالأستاذ: ${lecture.instructorAr}\n\nصنع بواسطة مصطفى احمد وحسن علوان`
                         ], { type: 'text/plain;charset=utf-8' });

@@ -1,5 +1,6 @@
 import express from 'express';
 import path from 'path';
+import fs from 'fs';
 import { createServer as createViteServer } from 'vite';
 import { GoogleGenAI, Type } from '@google/genai';
 
@@ -7,7 +8,73 @@ async function startServer() {
   const app = express();
   const PORT = 3000;
 
-  app.use(express.json({ limit: '10mb' }));
+  // Ensure persistent data and uploads directories exist
+  const DATA_DIR = path.join(process.cwd(), 'data');
+  const SHARED_STORE_PATH = path.join(DATA_DIR, 'shared_content.json');
+  const UPLOADS_DIR = path.join(process.cwd(), 'uploads');
+
+  try {
+    if (!fs.existsSync(DATA_DIR)) {
+      fs.mkdirSync(DATA_DIR, { recursive: true });
+    }
+    if (!fs.existsSync(UPLOADS_DIR)) {
+      fs.mkdirSync(UPLOADS_DIR, { recursive: true });
+    }
+  } catch (err) {
+    console.error('Error creating data/uploads directories:', err);
+  }
+
+  // Large payload limit for lecture PDFs and documents
+  app.use(express.json({ limit: '50mb' }));
+  app.use(express.urlencoded({ extended: true, limit: '50mb' }));
+
+  // Serve uploaded files statically so all students can access them
+  app.use('/uploads', express.static(UPLOADS_DIR));
+
+  // Helper functions for shared content persistence
+  interface SharedStore {
+    lectures: any[];
+    summaries: any[];
+    exams: any[];
+    schedule: any[] | null;
+    lastUpdated: string;
+  }
+
+  function getSharedStore(): SharedStore {
+    try {
+      if (fs.existsSync(SHARED_STORE_PATH)) {
+        const raw = fs.readFileSync(SHARED_STORE_PATH, 'utf-8');
+        const parsed = JSON.parse(raw);
+        return {
+          lectures: Array.isArray(parsed.lectures) ? parsed.lectures : [],
+          summaries: Array.isArray(parsed.summaries) ? parsed.summaries : [],
+          exams: Array.isArray(parsed.exams) ? parsed.exams : [],
+          schedule: Array.isArray(parsed.schedule) ? parsed.schedule : null,
+          lastUpdated: parsed.lastUpdated || new Date().toISOString(),
+        };
+      }
+    } catch (err) {
+      console.warn('Error reading shared store, initializing fallback:', err);
+    }
+    return {
+      lectures: [],
+      summaries: [],
+      exams: [],
+      schedule: null,
+      lastUpdated: new Date().toISOString(),
+    };
+  }
+
+  function saveSharedStore(data: SharedStore) {
+    try {
+      data.lastUpdated = new Date().toISOString();
+      const tmpPath = SHARED_STORE_PATH + '.tmp';
+      fs.writeFileSync(tmpPath, JSON.stringify(data, null, 2), 'utf-8');
+      fs.renameSync(tmpPath, SHARED_STORE_PATH);
+    } catch (err) {
+      console.error('Error saving shared store:', err);
+    }
+  }
 
   // Shared Gemini client
   let aiClient: GoogleGenAI | null = null;
@@ -34,6 +101,195 @@ async function startServer() {
       hasGeminiKey: Boolean(process.env.GEMINI_API_KEY),
       timestamp: new Date().toISOString()
     });
+  });
+
+  // --------------------------------------------------------------------------
+  // SHARED CONTENT ENDPOINTS (Visible to all students across all devices)
+  // "المحاضرة من اضيفها اريدها تظهر للكل مو بس الي يعني لكل الطلاب"
+  // --------------------------------------------------------------------------
+
+  // 1. Get all shared content (Lectures, Summaries, Exams, Schedule)
+  app.get('/api/content', (req, res) => {
+    try {
+      const store = getSharedStore();
+      res.json({
+        success: true,
+        lectures: store.lectures,
+        summaries: store.summaries,
+        exams: store.exams,
+        schedule: store.schedule,
+        lastUpdated: store.lastUpdated,
+      });
+    } catch (err: any) {
+      res.status(500).json({ success: false, error: err?.message || 'Failed to read content' });
+    }
+  });
+
+  // 2. Add / Update Lecture (Saves to server so it appears for all students)
+  app.post('/api/content/lectures', (req, res) => {
+    try {
+      const { lecture } = req.body || {};
+      if (!lecture || !lecture.id) {
+        return res.status(400).json({ success: false, error: 'Invalid lecture data' });
+      }
+      const store = getSharedStore();
+      // Remove any existing copy with the same ID, and prepend the new/updated lecture
+      store.lectures = [lecture, ...store.lectures.filter(l => l.id !== lecture.id)];
+      saveSharedStore(store);
+      console.log(`[SharedStore] Lecture added for all students: "${lecture.titleAr}" (${lecture.id})`);
+      res.json({
+        success: true,
+        count: store.lectures.length,
+        lecture,
+      });
+    } catch (err: any) {
+      console.error('Error adding shared lecture:', err);
+      res.status(500).json({ success: false, error: err?.message || 'Failed to save lecture' });
+    }
+  });
+
+  // 3. Delete Lecture from shared store
+  app.delete('/api/content/lectures/:id', (req, res) => {
+    try {
+      const { id } = req.params;
+      const store = getSharedStore();
+      store.lectures = store.lectures.filter(l => l.id !== id);
+      saveSharedStore(store);
+      res.json({ success: true });
+    } catch (err: any) {
+      res.status(500).json({ success: false, error: err?.message || 'Failed to delete lecture' });
+    }
+  });
+
+  // 4. Add / Update Summary
+  app.post('/api/content/summaries', (req, res) => {
+    try {
+      const { summary } = req.body || {};
+      if (!summary || !summary.id) {
+        return res.status(400).json({ success: false, error: 'Invalid summary data' });
+      }
+      const store = getSharedStore();
+      store.summaries = [summary, ...store.summaries.filter(s => s.id !== summary.id)];
+      saveSharedStore(store);
+      res.json({ success: true, count: store.summaries.length, summary });
+    } catch (err: any) {
+      res.status(500).json({ success: false, error: err?.message || 'Failed to save summary' });
+    }
+  });
+
+  // 5. Delete Summary
+  app.delete('/api/content/summaries/:id', (req, res) => {
+    try {
+      const { id } = req.params;
+      const store = getSharedStore();
+      store.summaries = store.summaries.filter(s => s.id !== id);
+      saveSharedStore(store);
+      res.json({ success: true });
+    } catch (err: any) {
+      res.status(500).json({ success: false, error: err?.message || 'Failed to delete summary' });
+    }
+  });
+
+  // 6. Add / Update Exam
+  app.post('/api/content/exams', (req, res) => {
+    try {
+      const { exam } = req.body || {};
+      if (!exam || !exam.id) {
+        return res.status(400).json({ success: false, error: 'Invalid exam data' });
+      }
+      const store = getSharedStore();
+      store.exams = [exam, ...store.exams.filter(e => e.id !== exam.id)];
+      saveSharedStore(store);
+      res.json({ success: true, count: store.exams.length, exam });
+    } catch (err: any) {
+      res.status(500).json({ success: false, error: err?.message || 'Failed to save exam' });
+    }
+  });
+
+  // 7. Delete Exam
+  app.delete('/api/content/exams/:id', (req, res) => {
+    try {
+      const { id } = req.params;
+      const store = getSharedStore();
+      store.exams = store.exams.filter(e => e.id !== id);
+      saveSharedStore(store);
+      res.json({ success: true });
+    } catch (err: any) {
+      res.status(500).json({ success: false, error: err?.message || 'Failed to delete exam' });
+    }
+  });
+
+  // 8. Add / Update Schedule Item
+  app.post('/api/content/schedule', (req, res) => {
+    try {
+      const { scheduleItem } = req.body || {};
+      if (!scheduleItem || !scheduleItem.id) {
+        return res.status(400).json({ success: false, error: 'Invalid schedule item data' });
+      }
+      const store = getSharedStore();
+      const currentList = Array.isArray(store.schedule) ? store.schedule : [];
+      store.schedule = [scheduleItem, ...currentList.filter(item => item.id !== scheduleItem.id)];
+      saveSharedStore(store);
+      res.json({ success: true, schedule: store.schedule });
+    } catch (err: any) {
+      res.status(500).json({ success: false, error: err?.message || 'Failed to save schedule' });
+    }
+  });
+
+  // 9. Delete Schedule Item
+  app.delete('/api/content/schedule/:id', (req, res) => {
+    try {
+      const { id } = req.params;
+      const store = getSharedStore();
+      if (Array.isArray(store.schedule)) {
+        store.schedule = store.schedule.filter(item => item.id !== id);
+        saveSharedStore(store);
+      }
+      res.json({ success: true });
+    } catch (err: any) {
+      res.status(500).json({ success: false, error: err?.message || 'Failed to delete schedule item' });
+    }
+  });
+
+  // 10. Reset Schedule to Default
+  app.post('/api/content/schedule/reset', (req, res) => {
+    try {
+      const store = getSharedStore();
+      store.schedule = null;
+      saveSharedStore(store);
+      res.json({ success: true });
+    } catch (err: any) {
+      res.status(500).json({ success: false, error: err?.message || 'Failed to reset schedule' });
+    }
+  });
+
+  // 11. File Upload Endpoint (Saves lecture PDFs, DOCs, or text files directly to server /uploads/)
+  app.post('/api/upload', (req, res) => {
+    try {
+      const { fileName, fileData } = req.body || {};
+      if (!fileName || !fileData) {
+        return res.status(400).json({ success: false, error: 'Missing fileName or fileData' });
+      }
+      const sanitizedName = String(fileName).replace(/[^a-zA-Z0-9.\-_]/g, '_');
+      const safeName = `${Date.now()}-${sanitizedName}`;
+      const filePath = path.join(UPLOADS_DIR, safeName);
+      const buffer = Buffer.from(fileData, 'base64');
+      fs.writeFileSync(filePath, buffer);
+
+      const sizeMB = (buffer.length / (1024 * 1024)).toFixed(1);
+      const fileUrl = `/uploads/${safeName}`;
+
+      console.log(`[Upload] File saved successfully: ${fileUrl} (${sizeMB} MB)`);
+      return res.json({
+        success: true,
+        fileUrl,
+        fileName: sanitizedName,
+        fileSize: `${sizeMB} MB`,
+      });
+    } catch (err: any) {
+      console.error('Error in /api/upload:', err);
+      return res.status(500).json({ success: false, error: err?.message || 'Upload failed' });
+    }
   });
 
   // Admin Secure PIN Verification Endpoint

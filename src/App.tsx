@@ -25,6 +25,18 @@ import { useDeviceDetector } from './hooks/useDeviceDetector';
 import { DeviceFrame } from './components/DeviceFrame';
 import { setFavicon, PLATFORM_LOGO_SVG, PLATFORM_AWAY_LOGO_SVG } from './utils/tabVisibility';
 import { useStudentProgress } from './hooks/useStudentProgress';
+import { 
+  fetchSharedContent, 
+  saveSharedLecture, 
+  deleteSharedLecture, 
+  saveSharedSummary, 
+  deleteSharedSummary, 
+  saveSharedExam, 
+  deleteSharedExam, 
+  saveSharedScheduleItem, 
+  deleteSharedScheduleItem, 
+  resetSharedSchedule 
+} from './services/contentApi';
 
 export default function App() {
   // Automatic Device Detection Hook
@@ -255,14 +267,101 @@ export default function App() {
   }, [language]);
 
   // --------------------------------------------------------------------------
-  // CONTENT MANAGEMENT HANDLERS (Admin Only - Passcode Protected)
+  // SERVER SYNCHRONIZATION FOR ALL STUDENTS
+  // "المحاضرة من اضيفها اريدها تظهر للكل مو بس الي يعني لكل الطلاب"
+  // --------------------------------------------------------------------------
+  const syncContentFromServer = async () => {
+    try {
+      const data = await fetchSharedContent();
+      if (!data) return;
+
+      // 1. Sync Lectures: Combine default lectures with server-persisted shared lectures
+      if (Array.isArray(data.lectures)) {
+        setLectures(prev => {
+          const map = new Map<string, Lecture>();
+          // Base official lectures
+          INITIAL_LECTURES.forEach(l => map.set(l.id, l));
+          // Previous local custom items (if any exist)
+          prev.filter(l => l.isCustom).forEach(l => map.set(l.id, l));
+          // Server authoritative lectures (persisted for all students)
+          data.lectures.forEach(l => map.set(l.id, l));
+
+          const combined = Array.from(map.values());
+          // Sort so custom/newly added lectures appear at the top
+          const custom = combined.filter(l => l.isCustom);
+          const standard = combined.filter(l => !l.isCustom);
+          const finalLectures = [...custom, ...standard];
+          localStorage.setItem('saytara_lectures', JSON.stringify(finalLectures));
+          return finalLectures;
+        });
+      }
+
+      // 2. Sync Summaries
+      if (Array.isArray(data.summaries)) {
+        setSummaries(prev => {
+          const map = new Map<string, Summary>();
+          INITIAL_SUMMARIES.forEach(s => map.set(s.id, s));
+          prev.forEach(s => map.set(s.id, s));
+          data.summaries.forEach(s => map.set(s.id, s));
+          const finalSummaries = Array.from(map.values());
+          localStorage.setItem('saytara_summaries', JSON.stringify(finalSummaries));
+          return finalSummaries;
+        });
+      }
+
+      // 3. Sync Exams
+      if (Array.isArray(data.exams)) {
+        setExams(prev => {
+          const map = new Map<string, ExamQuestionPaper>();
+          INITIAL_EXAMS.forEach(e => map.set(e.id, e));
+          prev.forEach(e => map.set(e.id, e));
+          data.exams.forEach(e => map.set(e.id, e));
+          const finalExams = Array.from(map.values());
+          localStorage.setItem('saytara_exams', JSON.stringify(finalExams));
+          return finalExams;
+        });
+      }
+
+      // 4. Sync Schedule (if modified on server)
+      if (Array.isArray(data.schedule) && data.schedule.length > 0) {
+        setSchedule(data.schedule);
+        localStorage.setItem('saytara_schedule', JSON.stringify(data.schedule));
+      }
+    } catch (err) {
+      console.warn('[Sync] Content sync warning:', err);
+    }
+  };
+
+  useEffect(() => {
+    // Initial fetch on mount
+    syncContentFromServer();
+
+    // Periodic synchronization every 15 seconds to fetch lectures added by other users/admin
+    const interval = setInterval(syncContentFromServer, 15000);
+
+    // Re-sync whenever user returns to window tab
+    const handleFocus = () => {
+      syncContentFromServer();
+    };
+    window.addEventListener('focus', handleFocus);
+
+    return () => {
+      clearInterval(interval);
+      window.removeEventListener('focus', handleFocus);
+    };
+  }, []);
+
+  // --------------------------------------------------------------------------
+  // CONTENT MANAGEMENT HANDLERS (Admin Only - Shared With All Students)
   // --------------------------------------------------------------------------
   const handleAddLecture = (newLecture: Lecture) => {
     setLectures(prev => {
-      const updated = [newLecture, ...prev];
+      const updated = [newLecture, ...prev.filter(l => l.id !== newLecture.id)];
       localStorage.setItem('saytara_lectures', JSON.stringify(updated));
       return updated;
     });
+    // Persist to server so it is immediately visible to all students!
+    saveSharedLecture(newLecture).catch(err => console.error(err));
   };
 
   const handleDeleteLecture = (lectureId: string) => {
@@ -271,14 +370,16 @@ export default function App() {
       localStorage.setItem('saytara_lectures', JSON.stringify(updated));
       return updated;
     });
+    deleteSharedLecture(lectureId).catch(err => console.error(err));
   };
 
   const handleAddSummary = (newSummary: Summary) => {
     setSummaries(prev => {
-      const updated = [newSummary, ...prev];
+      const updated = [newSummary, ...prev.filter(s => s.id !== newSummary.id)];
       localStorage.setItem('saytara_summaries', JSON.stringify(updated));
       return updated;
     });
+    saveSharedSummary(newSummary).catch(err => console.error(err));
   };
 
   const handleDeleteSummary = (summaryId: string) => {
@@ -287,14 +388,16 @@ export default function App() {
       localStorage.setItem('saytara_summaries', JSON.stringify(updated));
       return updated;
     });
+    deleteSharedSummary(summaryId).catch(err => console.error(err));
   };
 
   const handleAddScheduleItem = (newItem: ScheduleItem) => {
     setSchedule(prev => {
-      const updated = [newItem, ...prev];
+      const updated = [newItem, ...prev.filter(item => item.id !== newItem.id)];
       localStorage.setItem('saytara_schedule', JSON.stringify(updated));
       return updated;
     });
+    saveSharedScheduleItem(newItem).catch(err => console.error(err));
   };
 
   const handleDeleteScheduleItem = (itemId: string) => {
@@ -303,19 +406,22 @@ export default function App() {
       localStorage.setItem('saytara_schedule', JSON.stringify(updated));
       return updated;
     });
+    deleteSharedScheduleItem(itemId).catch(err => console.error(err));
   };
 
   const handleResetSchedule = () => {
     setSchedule(INITIAL_SCHEDULE);
     localStorage.setItem('saytara_schedule', JSON.stringify(INITIAL_SCHEDULE));
+    resetSharedSchedule().catch(err => console.error(err));
   };
 
   const handleAddExam = (newExam: ExamQuestionPaper) => {
     setExams(prev => {
-      const updated = [newExam, ...prev];
+      const updated = [newExam, ...prev.filter(e => e.id !== newExam.id)];
       localStorage.setItem('saytara_exams', JSON.stringify(updated));
       return updated;
     });
+    saveSharedExam(newExam).catch(err => console.error(err));
   };
 
   const handleDeleteExam = (examId: string) => {
@@ -324,6 +430,7 @@ export default function App() {
       localStorage.setItem('saytara_exams', JSON.stringify(updated));
       return updated;
     });
+    deleteSharedExam(examId).catch(err => console.error(err));
   };
 
   const handleOpenAdminTab = (tab: 'lectures' | 'summaries' | 'schedule' | 'exams', subjectId?: string) => {

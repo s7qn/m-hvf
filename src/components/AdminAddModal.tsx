@@ -28,6 +28,7 @@ import {
 } from 'lucide-react';
 import { Subject, Lecture, Quiz, QuizQuestion, Stage, Language, Summary, ExamQuestionPaper, ScheduleItem } from '../types';
 import { TRANSLATIONS } from '../data/translations';
+import { uploadSharedFile } from '../services/contentApi';
 
 interface AdminAddModalProps {
   subjects: Subject[];
@@ -99,6 +100,7 @@ export const AdminAddModal: React.FC<AdminAddModalProps> = ({
   const [lecFileUrl, setLecFileUrl] = useState('');
   const [lecUploadedFileName, setLecUploadedFileName] = useState('');
   const [lecUploadedFileSize, setLecUploadedFileSize] = useState('2.5 MB');
+  const [isUploadingFile, setIsUploadingFile] = useState<boolean>(false);
   const [lecSummaryPointsText, setLecSummaryPointsText] = useState('');
   const [lecKeyFormulasText, setLecKeyFormulasText] = useState('');
   
@@ -570,7 +572,11 @@ export const AdminAddModal: React.FC<AdminAddModalProps> = ({
     };
 
     onAddLecture(newLecture);
-    triggerSuccess(language === 'ar' ? 'تمت إضافة الملزمة وتوليد الاختبار المتزامن بنجاح!' : 'Lecture & AI Quiz added successfully!');
+    triggerSuccess(
+      language === 'ar' 
+        ? 'تمت إضافة المحاضرة ونشرها لجميع الطلاب بنجاح!' 
+        : 'Lecture published to all students successfully!'
+    );
   };
 
   // 2. Submit Summary
@@ -986,9 +992,20 @@ export const AdminAddModal: React.FC<AdminAddModalProps> = ({
                                   if (file) {
                                     setLecUploadedFileName(file.name);
                                     setLecUploadedFileSize(`${(file.size / (1024 * 1024)).toFixed(1)} MB`);
-                                    const url = URL.createObjectURL(file);
-                                    setLecFileUrl(url);
-                                    // Automatic verbatim extraction & AI quiz sync
+                                    
+                                    // 1. Upload to shared server so all students can access the actual file
+                                    setIsUploadingFile(true);
+                                    uploadSharedFile(file).then((res) => {
+                                      if (res && res.fileUrl) {
+                                        setLecFileUrl(res.fileUrl);
+                                        if (res.fileSize) setLecUploadedFileSize(res.fileSize);
+                                      }
+                                      setIsUploadingFile(false);
+                                    }).catch(() => {
+                                      setIsUploadingFile(false);
+                                    });
+
+                                    // 2. Automatic verbatim extraction & AI quiz sync
                                     await handleAnalyzeLectureFile(file);
                                   }
                                 }}
@@ -997,6 +1014,11 @@ export const AdminAddModal: React.FC<AdminAddModalProps> = ({
                             <span className="text-xs text-slate-500 dark:text-slate-400 truncate">
                               {lecUploadedFileName || 'ملزمة بصيغة PDF (تلقائي 2.5 MB)'}
                             </span>
+                            {isUploadingFile && (
+                              <span className="text-[10px] text-blue-600 dark:text-blue-400 font-bold animate-pulse">
+                                {language === 'ar' ? 'جارٍ رفع الملف للسيرفر المشترك...' : 'Uploading to shared server...'}
+                              </span>
+                            )}
                           </div>
 
                           {/* Quick trigger for file content analysis */}
