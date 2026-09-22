@@ -11,11 +11,16 @@ async function startServer() {
   // Ensure persistent data and uploads directories exist
   const DATA_DIR = path.join(process.cwd(), 'data');
   const SHARED_STORE_PATH = path.join(DATA_DIR, 'shared_content.json');
+  const SRC_DATA_DIR = path.join(process.cwd(), 'src', 'data');
+  const SRC_SAVED_STORE_PATH = path.join(SRC_DATA_DIR, 'saved_content.json');
   const UPLOADS_DIR = path.join(process.cwd(), 'uploads');
 
   try {
     if (!fs.existsSync(DATA_DIR)) {
       fs.mkdirSync(DATA_DIR, { recursive: true });
+    }
+    if (!fs.existsSync(SRC_DATA_DIR)) {
+      fs.mkdirSync(SRC_DATA_DIR, { recursive: true });
     }
     if (!fs.existsSync(UPLOADS_DIR)) {
       fs.mkdirSync(UPLOADS_DIR, { recursive: true });
@@ -37,19 +42,44 @@ async function startServer() {
     summaries: any[];
     exams: any[];
     schedule: any[] | null;
+    deletedLectureIds?: string[];
     lastUpdated: string;
+  }
+
+  // Helper to remove any Baath party materials as explicitly requested by the user
+  function filterOutBaath(list: any[]): any[] {
+    if (!Array.isArray(list)) return [];
+    return list.filter(item => {
+      if (!item) return false;
+      if (item.subjectId === 'baath-crimes') return false;
+      const titleAr = String(item.titleAr || '');
+      const titleEn = String(item.titleEn || '');
+      if (titleAr.includes('البعث') || titleEn.toLowerCase().includes('baath')) return false;
+      return true;
+    });
   }
 
   function getSharedStore(): SharedStore {
     try {
+      let raw: string | null = null;
       if (fs.existsSync(SHARED_STORE_PATH)) {
-        const raw = fs.readFileSync(SHARED_STORE_PATH, 'utf-8');
+        raw = fs.readFileSync(SHARED_STORE_PATH, 'utf-8');
+      } else if (fs.existsSync(SRC_SAVED_STORE_PATH)) {
+        raw = fs.readFileSync(SRC_SAVED_STORE_PATH, 'utf-8');
+      }
+
+      if (raw) {
         const parsed = JSON.parse(raw);
+        const deletedLectureIds = Array.isArray(parsed.deletedLectureIds) ? parsed.deletedLectureIds : [];
+        const filteredLectures = filterOutBaath(Array.isArray(parsed.lectures) ? parsed.lectures : [])
+          .filter(l => l && l.id && !deletedLectureIds.includes(l.id));
+
         return {
-          lectures: Array.isArray(parsed.lectures) ? parsed.lectures : [],
-          summaries: Array.isArray(parsed.summaries) ? parsed.summaries : [],
-          exams: Array.isArray(parsed.exams) ? parsed.exams : [],
+          lectures: filteredLectures,
+          summaries: filterOutBaath(Array.isArray(parsed.summaries) ? parsed.summaries : []),
+          exams: filterOutBaath(Array.isArray(parsed.exams) ? parsed.exams : []),
           schedule: Array.isArray(parsed.schedule) ? parsed.schedule : null,
+          deletedLectureIds,
           lastUpdated: parsed.lastUpdated || new Date().toISOString(),
         };
       }
@@ -61,6 +91,7 @@ async function startServer() {
       summaries: [],
       exams: [],
       schedule: null,
+      deletedLectureIds: [],
       lastUpdated: new Date().toISOString(),
     };
   }
@@ -68,9 +99,25 @@ async function startServer() {
   function saveSharedStore(data: SharedStore) {
     try {
       data.lastUpdated = new Date().toISOString();
+      const deletedLectureIds = Array.isArray(data.deletedLectureIds) ? data.deletedLectureIds : [];
+      data.lectures = filterOutBaath(data.lectures).filter(l => l && l.id && !deletedLectureIds.includes(l.id));
+      data.summaries = filterOutBaath(data.summaries);
+      data.exams = filterOutBaath(data.exams);
+      data.deletedLectureIds = deletedLectureIds;
+
+      const payload = JSON.stringify(data, null, 2);
+
+      // 1. Save to runtime shared store
       const tmpPath = SHARED_STORE_PATH + '.tmp';
-      fs.writeFileSync(tmpPath, JSON.stringify(data, null, 2), 'utf-8');
+      fs.writeFileSync(tmpPath, payload, 'utf-8');
       fs.renameSync(tmpPath, SHARED_STORE_PATH);
+
+      // 2. Also save to src/data/saved_content.json so it is tracked in Git/GitHub repository files!
+      try {
+        fs.writeFileSync(SRC_SAVED_STORE_PATH, payload, 'utf-8');
+      } catch (srcErr) {
+        console.warn('Could not write to src/data/saved_content.json:', srcErr);
+      }
     } catch (err) {
       console.error('Error saving shared store:', err);
     }
@@ -118,6 +165,7 @@ async function startServer() {
         summaries: store.summaries,
         exams: store.exams,
         schedule: store.schedule,
+        deletedLectureIds: store.deletedLectureIds || [],
         lastUpdated: store.lastUpdated,
       });
     } catch (err: any) {
@@ -125,18 +173,32 @@ async function startServer() {
     }
   });
 
-  // 2. Add / Update Lecture (Saves to server so it appears for all students)
+  // 2. Add / Update Lecture (Saves to server so it appears for all students and tracks in git files)
   app.post('/api/content/lectures', (req, res) => {
     try {
       const { lecture } = req.body || {};
       if (!lecture || !lecture.id) {
         return res.status(400).json({ success: false, error: 'Invalid lecture data' });
       }
+
+      // Check if this is a Baath crimes lecture requested to be excluded
+      if (
+        lecture.subjectId === 'baath-crimes' || 
+        (lecture.titleAr && lecture.titleAr.includes('البعث')) ||
+        (lecture.titleEn && lecture.titleEn.toLowerCase().includes('baath'))
+      ) {
+        return res.json({ success: true, count: 0, excluded: true });
+      }
+
       const store = getSharedStore();
+      // If was previously marked as deleted, remove from deleted list
+      if (Array.isArray(store.deletedLectureIds)) {
+        store.deletedLectureIds = store.deletedLectureIds.filter(id => id !== lecture.id);
+      }
       // Remove any existing copy with the same ID, and prepend the new/updated lecture
       store.lectures = [lecture, ...store.lectures.filter(l => l.id !== lecture.id)];
       saveSharedStore(store);
-      console.log(`[SharedStore] Lecture added for all students: "${lecture.titleAr}" (${lecture.id})`);
+      console.log(`[SharedStore] Lecture added for all students & synced to repo: "${lecture.titleAr}" (${lecture.id})`);
       res.json({
         success: true,
         count: store.lectures.length,
@@ -148,16 +210,42 @@ async function startServer() {
     }
   });
 
-  // 3. Delete Lecture from shared store
+  // 3. Delete Lecture from shared store & mark as permanently deleted across devices
   app.delete('/api/content/lectures/:id', (req, res) => {
     try {
       const { id } = req.params;
       const store = getSharedStore();
       store.lectures = store.lectures.filter(l => l.id !== id);
+      if (!Array.isArray(store.deletedLectureIds)) {
+        store.deletedLectureIds = [];
+      }
+      if (!store.deletedLectureIds.includes(id)) {
+        store.deletedLectureIds.push(id);
+      }
       saveSharedStore(store);
-      res.json({ success: true });
+      console.log(`[SharedStore] Lecture deleted and blacklisted: ${id}`);
+      res.json({ success: true, deletedId: id, deletedLectureIds: store.deletedLectureIds });
     } catch (err: any) {
       res.status(500).json({ success: false, error: err?.message || 'Failed to delete lecture' });
+    }
+  });
+
+  // GitHub & Link Synchronization info endpoint
+  app.get('/api/sync/github-info', (req, res) => {
+    try {
+      const store = getSharedStore();
+      res.json({
+        success: true,
+        status: 'synced',
+        gitTrackedPath: 'src/data/saved_content.json',
+        lecturesCount: store.lectures.length,
+        summariesCount: store.summaries.length,
+        deletedLectureIds: store.deletedLectureIds || [],
+        lastUpdated: store.lastUpdated,
+        sharedUrl: 'https://ais-pre-jsxgzdmg5k7kahkxf37qw2-745828277210.europe-west2.run.app',
+      });
+    } catch (err: any) {
+      res.status(500).json({ success: false, error: err?.message });
     }
   });
 

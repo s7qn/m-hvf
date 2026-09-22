@@ -6,6 +6,7 @@ export interface SharedContentResponse {
   summaries: Summary[];
   exams: ExamQuestionPaper[];
   schedule: ScheduleItem[] | null;
+  deletedLectureIds?: string[];
   lastUpdated?: string;
 }
 
@@ -27,11 +28,35 @@ export async function fetchSharedContent(): Promise<SharedContentResponse | null
         summaries: Array.isArray(data.summaries) ? data.summaries : [],
         exams: Array.isArray(data.exams) ? data.exams : [],
         schedule: Array.isArray(data.schedule) ? data.schedule : null,
+        deletedLectureIds: Array.isArray(data.deletedLectureIds) ? data.deletedLectureIds : [],
         lastUpdated: data.lastUpdated,
       };
     }
   } catch (err) {
     console.warn('[ContentAPI] Could not fetch shared content from server:', err);
+  }
+  return null;
+}
+
+/**
+ * Get GitHub & repository synchronization info
+ */
+export async function getSyncInfo(): Promise<{
+  success: boolean;
+  gitTrackedPath: string;
+  lecturesCount: number;
+  summariesCount: number;
+  deletedLectureIds: string[];
+  lastUpdated: string;
+  sharedUrl: string;
+} | null> {
+  try {
+    const res = await fetch('/api/sync/github-info');
+    if (res.ok) {
+      return await res.json();
+    }
+  } catch {
+    // ignore
   }
   return null;
 }

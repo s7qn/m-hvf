@@ -18,7 +18,9 @@ import {
   TrendingUp,
   Award,
   CheckSquare,
-  Square
+  Square,
+  Check,
+  X
 } from 'lucide-react';
 import { Lecture, Subject, Stage, Language, QuizAttempt } from '../types';
 import { TRANSLATIONS } from '../data/translations';
@@ -36,6 +38,7 @@ interface LecturesViewProps {
   onToggleReadLecture?: (lectureId: string) => void;
   quizAttempts?: Record<string, QuizAttempt>;
   onOpenDashboard?: () => void;
+  isAdminUnlocked?: boolean;
 }
 
 export const LecturesView: React.FC<LecturesViewProps> = ({
@@ -51,10 +54,12 @@ export const LecturesView: React.FC<LecturesViewProps> = ({
   onToggleReadLecture,
   quizAttempts = {},
   onOpenDashboard,
+  isAdminUnlocked = false,
 }) => {
   const t = TRANSLATIONS[language];
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedSubjectFilter, setSelectedSubjectFilter] = useState<string>('all');
+  const [deletingLectureId, setDeletingLectureId] = useState<string | null>(null);
 
   // Filter subjects by stage
   const visibleSubjects = subjects.filter(s => selectedStage === 'all' || s.stage === selectedStage);
@@ -540,19 +545,41 @@ export const LecturesView: React.FC<LecturesViewProps> = ({
                       <Download className="w-4 h-4" />
                     </button>
 
-                    {lecture.isCustom && onDeleteLecture && (
-                      <button
-                        id={`btn-delete-lec-${lecture.id}`}
-                        onClick={() => {
-                          if (window.confirm(language === 'ar' ? 'هل أنت متأكد من حذف هذه الملزمة المخصصة؟' : 'Are you sure you want to delete this custom handout?')) {
-                            onDeleteLecture(lecture.id);
-                          }
-                        }}
-                        className="p-2 rounded-xl border border-red-200 dark:border-red-900/50 hover:bg-red-50 dark:hover:bg-red-950/30 text-red-500 dark:text-red-400 hover:text-red-700 dark:hover:text-red-300 text-xs transition-colors cursor-pointer"
-                        title={language === 'ar' ? 'حذف الملزمة المخصصة' : 'Delete Custom Handout'}
-                      >
-                        <Trash2 className="w-4 h-4" />
-                      </button>
+                    {(lecture.isCustom || isAdminUnlocked) && onDeleteLecture && (
+                      deletingLectureId === lecture.id ? (
+                        <div className="flex items-center gap-1 p-1 bg-red-50 dark:bg-red-950/80 border border-red-300 dark:border-red-800 rounded-xl shadow-xs animate-fadeIn">
+                          <span className="text-[11px] font-bold text-red-700 dark:text-red-300 px-1 whitespace-nowrap">
+                            {language === 'ar' ? 'حذف؟' : 'Delete?'}
+                          </span>
+                          <button
+                            id={`btn-confirm-delete-${lecture.id}`}
+                            onClick={() => {
+                              onDeleteLecture(lecture.id);
+                              setDeletingLectureId(null);
+                            }}
+                            className="p-1.5 rounded-lg bg-red-600 hover:bg-red-700 text-white transition-colors cursor-pointer"
+                            title={language === 'ar' ? 'تأكيد الحذف' : 'Confirm Delete'}
+                          >
+                            <Check className="w-3.5 h-3.5" />
+                          </button>
+                          <button
+                            onClick={() => setDeletingLectureId(null)}
+                            className="p-1.5 rounded-lg bg-slate-200 dark:bg-slate-700 hover:bg-slate-300 text-slate-700 dark:text-slate-200 transition-colors cursor-pointer"
+                            title={language === 'ar' ? 'إلغاء' : 'Cancel'}
+                          >
+                            <X className="w-3.5 h-3.5" />
+                          </button>
+                        </div>
+                      ) : (
+                        <button
+                          id={`btn-delete-lec-${lecture.id}`}
+                          onClick={() => setDeletingLectureId(lecture.id)}
+                          className="p-2 rounded-xl border border-red-200 dark:border-red-900/50 hover:bg-red-50 dark:hover:bg-red-950/30 text-red-500 dark:text-red-400 hover:text-red-700 dark:hover:text-red-300 text-xs transition-colors cursor-pointer"
+                          title={language === 'ar' ? 'إزالة هذه الملزمة' : 'Delete Lecture'}
+                        >
+                          <Trash2 className="w-4 h-4" />
+                        </button>
+                      )
                     )}
                   </div>
 

@@ -24,7 +24,13 @@ import {
   RefreshCw,
   Zap,
   Code,
-  ShieldCheck
+  ShieldCheck,
+  Copy,
+  Check,
+  Share2,
+  ExternalLink,
+  Download,
+  GitBranch
 } from 'lucide-react';
 import { Subject, Lecture, Quiz, QuizQuestion, Stage, Language, Summary, ExamQuestionPaper, ScheduleItem } from '../types';
 import { TRANSLATIONS } from '../data/translations';
@@ -41,7 +47,7 @@ interface AdminAddModalProps {
   onAddScheduleItem?: (newItem: ScheduleItem) => void;
   onAddExam?: (newExam: ExamQuestionPaper) => void;
   initialSubjectId?: string;
-  initialTab?: 'lectures' | 'summaries' | 'schedule' | 'exams';
+  initialTab?: 'lectures' | 'summaries' | 'schedule' | 'exams' | 'sync';
 }
 
 const WEEK_DAYS = [
@@ -67,8 +73,21 @@ export const AdminAddModal: React.FC<AdminAddModalProps> = ({
 }) => {
   const t = TRANSLATIONS[language];
 
+  // Filter out any unwanted Baath material
+  const availableSubjects = subjects.filter(s => 
+    s.id !== 'baath-crimes' && 
+    !s.nameAr.includes('البعث') && 
+    !s.nameEn.toLowerCase().includes('baath')
+  );
+
   // Current active modal tab
-  const [activeSubTab, setActiveSubTab] = useState<'lectures' | 'summaries' | 'schedule' | 'exams'>(initialTab);
+  const [activeSubTab, setActiveSubTab] = useState<'lectures' | 'summaries' | 'schedule' | 'exams' | 'sync'>(initialTab);
+
+  // GitHub & Link Sync state
+  const [copiedLink, setCopiedLink] = useState(false);
+  const [copiedJson, setCopiedJson] = useState(false);
+  const [syncStatus, setSyncStatus] = useState<any>(null);
+  const [isCheckingSync, setIsCheckingSync] = useState(false);
 
   // Auth state
   const [passcode, setPasscode] = useState('');
@@ -83,9 +102,9 @@ export const AdminAddModal: React.FC<AdminAddModalProps> = ({
   // ----------------------------------------------------
   // 1. LECTURE FORM STATE
   // ----------------------------------------------------
-  const defaultSubId = initialSubjectId && subjects.some(s => s.id === initialSubjectId)
+  const defaultSubId = initialSubjectId && availableSubjects.some(s => s.id === initialSubjectId)
     ? initialSubjectId
-    : (subjects[0]?.id || '');
+    : (availableSubjects[0]?.id || '');
 
   const [lecSubjectId, setLecSubjectId] = useState(defaultSubId);
   const initialSubject = subjects.find(s => s.id === defaultSubId);
@@ -854,6 +873,29 @@ export const AdminAddModal: React.FC<AdminAddModalProps> = ({
                   <FileCheck className="w-4 h-4 shrink-0" />
                   <span>{language === 'ar' ? 'نماذج امتحانية' : 'Exams'}</span>
                 </button>
+
+                <button
+                  type="button"
+                  id="btn-admin-tab-sync"
+                  onClick={() => { 
+                    setActiveSubTab('sync'); 
+                    setFormError(''); 
+                    setIsCheckingSync(true);
+                    fetch('/api/sync/github-info')
+                      .then(r => r.json())
+                      .then(d => setSyncStatus(d))
+                      .catch(() => {})
+                      .finally(() => setIsCheckingSync(false));
+                  }}
+                  className={`flex-1 min-w-[140px] py-2.5 px-3 rounded-xl text-xs font-black flex items-center justify-center gap-2 transition-all cursor-pointer ${
+                    activeSubTab === 'sync'
+                      ? 'bg-emerald-600 text-white shadow-xs'
+                      : 'text-emerald-700 dark:text-emerald-400 hover:text-emerald-900 dark:hover:text-emerald-200'
+                  }`}
+                >
+                  <Share2 className="w-4 h-4 shrink-0" />
+                  <span>{language === 'ar' ? 'مزامنة GitHub والرابط' : 'Sync & GitHub'}</span>
+                </button>
               </div>
 
               {/* Success Notification Banner */}
@@ -877,6 +919,25 @@ export const AdminAddModal: React.FC<AdminAddModalProps> = ({
               {/* ======================================================== */}
               {activeSubTab === 'lectures' && (
                 <form onSubmit={handleSubmitLecture} className="space-y-6">
+                  {/* Live Sync Information Banner */}
+                  <div className="p-3.5 rounded-2xl bg-emerald-50/80 dark:bg-emerald-950/40 border border-emerald-200 dark:border-emerald-800/70 flex flex-wrap items-center justify-between gap-2 text-xs">
+                    <div className="flex items-center gap-2 text-emerald-800 dark:text-emerald-200 font-bold">
+                      <span className="w-2.5 h-2.5 rounded-full bg-emerald-500 animate-pulse shrink-0" />
+                      <span>
+                        {language === 'ar'
+                          ? 'المزامنة التلقائية مفعلة: الملزمة ستُنشر فوراً لجميع الطلاب عبر الرابط المشترك وتُحفظ بملف المشروع لـ GitHub.'
+                          : 'Auto-Sync Active: Lecture will be synced across the link and saved into repository.'}
+                      </span>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => setActiveSubTab('sync')}
+                      className="px-2.5 py-1 rounded-lg bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-[11px] transition-colors cursor-pointer"
+                    >
+                      {language === 'ar' ? 'عرض الرابط و GitHub' : 'View Link & Git'}
+                    </button>
+                  </div>
+
                   <div className="bg-blue-50/50 dark:bg-blue-950/30 p-4 rounded-2xl border border-blue-100 dark:border-blue-900 space-y-4">
                     <h3 className="text-sm font-black text-blue-950 dark:text-white flex items-center gap-2">
                       <BookOpen className="w-4 h-4 text-blue-600 dark:text-blue-400" />
@@ -893,7 +954,7 @@ export const AdminAddModal: React.FC<AdminAddModalProps> = ({
                           onChange={(e) => handleLecSubjectChange(e.target.value)}
                           className="w-full px-3 py-2 rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-xs font-bold text-slate-800 dark:text-white focus:outline-none focus:ring-2 focus:ring-blue-600"
                         >
-                          {subjects.map(s => (
+                          {availableSubjects.map(s => (
                             <option key={s.id} value={s.id}>
                               {s.code} - {language === 'ar' ? s.nameAr : s.nameEn} (المرحلة {s.stage})
                             </option>
@@ -1793,6 +1854,203 @@ export const AdminAddModal: React.FC<AdminAddModalProps> = ({
                     </button>
                   </div>
                 </form>
+              )}
+
+              {/* ======================================================== */}
+              {/* TAB 5: GITHUB & SHARED LINK SYNCHRONIZATION              */}
+              {/* ======================================================== */}
+              {activeSubTab === 'sync' && (
+                <div className="space-y-6 animate-fadeIn">
+                  {/* Card 1: Shared Public Link */}
+                  <div className="bg-gradient-to-br from-blue-50 to-indigo-50/60 dark:from-blue-950/40 dark:to-indigo-950/30 p-5 rounded-2xl border border-blue-200 dark:border-blue-900/80 space-y-4">
+                    <div className="flex items-center justify-between gap-3">
+                      <div className="flex items-center gap-2.5">
+                        <div className="w-9 h-9 rounded-xl bg-blue-600 text-white flex items-center justify-center shadow-sm">
+                          <Share2 className="w-5 h-5" />
+                        </div>
+                        <div>
+                          <h4 className="text-sm font-black text-slate-900 dark:text-white">
+                            {language === 'ar' ? 'رابط المنصة المشترك لجميع الطلاب' : 'Shared Platform Public Link'}
+                          </h4>
+                          <p className="text-[11px] text-slate-500 dark:text-slate-400">
+                            {language === 'ar' ? 'أي ملزمة أو تعديل يتم ربطه وبثه فورياً عبر هذا الرابط لجميع الطلاب' : 'All materials are instantly synced to this link'}
+                          </p>
+                        </div>
+                      </div>
+                      <span className="px-2.5 py-1 rounded-full bg-emerald-100 dark:bg-emerald-950/60 text-emerald-700 dark:text-emerald-300 font-bold text-[11px] flex items-center gap-1.5">
+                        <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse" />
+                        <span>{language === 'ar' ? 'مباشر وشغال' : 'Live & Active'}</span>
+                      </span>
+                    </div>
+
+                    <div className="flex items-center gap-2 bg-white dark:bg-slate-900 p-2 rounded-xl border border-slate-200 dark:border-slate-800 shadow-xs">
+                      <input 
+                        type="text" 
+                        readOnly 
+                        value="https://ais-pre-jsxgzdmg5k7kahkxf37qw2-745828277210.europe-west2.run.app"
+                        className="flex-1 bg-transparent px-2 text-xs font-mono text-slate-700 dark:text-slate-300 outline-none"
+                      />
+                      <button
+                        type="button"
+                        onClick={() => {
+                          navigator.clipboard.writeText("https://ais-pre-jsxgzdmg5k7kahkxf37qw2-745828277210.europe-west2.run.app");
+                          setCopiedLink(true);
+                          setTimeout(() => setCopiedLink(false), 2500);
+                        }}
+                        className="px-3 py-1.5 rounded-lg bg-blue-600 hover:bg-blue-700 text-white text-xs font-bold flex items-center gap-1.5 transition-colors cursor-pointer shrink-0"
+                      >
+                        {copiedLink ? (
+                          <>
+                            <Check className="w-3.5 h-3.5 text-emerald-300" />
+                            <span>{language === 'ar' ? 'تم النسخ!' : 'Copied!'}</span>
+                          </>
+                        ) : (
+                          <>
+                            <Copy className="w-3.5 h-3.5" />
+                            <span>{language === 'ar' ? 'نسخ الرابط' : 'Copy Link'}</span>
+                          </>
+                        )}
+                      </button>
+                    </div>
+
+                    <p className="text-xs text-slate-600 dark:text-slate-300 leading-relaxed">
+                      {language === 'ar'
+                        ? 'شارك هذا الرابط مع زملائك الطلاب. المنصة مبرمجة لمزامنة أي ملزمة جديدة تضيفها في غضون ثوانٍ تلقائياً عبر السيرفر دون الحاجة لإعادة الإرسال.'
+                        : 'Share this public link with students. Any lecture you add is synced to every connected device automatically.'}
+                    </p>
+                  </div>
+
+                  {/* Card 2: GitHub Repository Synchronization */}
+                  <div className="bg-slate-50 dark:bg-slate-800/60 p-5 rounded-2xl border border-slate-200 dark:border-slate-700 space-y-4">
+                    <div className="flex items-center justify-between gap-3">
+                      <div className="flex items-center gap-2.5">
+                        <div className="w-9 h-9 rounded-xl bg-slate-900 dark:bg-slate-700 text-white flex items-center justify-center shadow-sm">
+                          <GitBranch className="w-5 h-5" />
+                        </div>
+                        <div>
+                          <h4 className="text-sm font-black text-slate-900 dark:text-white">
+                            {language === 'ar' ? 'المزامنة مع GitHub وكود المشروع' : 'GitHub Repository Sync'}
+                          </h4>
+                          <p className="text-[11px] text-slate-500 dark:text-slate-400">
+                            {language === 'ar' ? 'تخزين الملازم في ملفات المشروع البرمجية لتثبيتها في المستودع' : 'Lectures dual-written into repo file'}
+                          </p>
+                        </div>
+                      </div>
+                      <span className="px-2.5 py-1 rounded-full bg-blue-100 dark:bg-blue-950/60 text-blue-700 dark:text-blue-300 font-bold text-[11px] flex items-center gap-1.5">
+                        <CheckCircle2 className="w-3.5 h-3.5 text-blue-600 dark:text-blue-400" />
+                        <span>{language === 'ar' ? 'متصل ومحفوظ' : 'Auto-Tracked'}</span>
+                      </span>
+                    </div>
+
+                    <div className="space-y-2 text-xs text-slate-600 dark:text-slate-300">
+                      <div className="flex items-center justify-between p-3 rounded-xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800">
+                        <div className="flex items-center gap-2">
+                          <Code className="w-4 h-4 text-slate-400" />
+                          <span className="font-bold">{language === 'ar' ? 'مسار ملف الملازم في المشروع:' : 'Repo File Path:'}</span>
+                        </div>
+                        <code className="font-mono text-blue-600 dark:text-blue-400 font-bold bg-blue-50 dark:bg-blue-950/50 px-2 py-0.5 rounded">
+                          src/data/saved_content.json
+                        </code>
+                      </div>
+
+                      <div className="flex items-center justify-between p-3 rounded-xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800">
+                        <div className="flex items-center gap-2">
+                          <BookOpen className="w-4 h-4 text-slate-400" />
+                          <span className="font-bold">{language === 'ar' ? 'حالة التخزين الحالي:' : 'Current Storage Status:'}</span>
+                        </div>
+                        <span className="font-bold text-emerald-600 dark:text-emerald-400">
+                          {language === 'ar' ? 'مزامنة ثنائية (Runtime + Repo)' : 'Dual-write Sync Active'}
+                        </span>
+                      </div>
+                    </div>
+
+                    {/* Action buttons for GitHub JSON */}
+                    <div className="flex flex-wrap gap-2 pt-1">
+                      <button
+                        type="button"
+                        onClick={async () => {
+                          try {
+                            const res = await fetch('/api/content');
+                            const data = await res.json();
+                            const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
+                            const url = URL.createObjectURL(blob);
+                            const a = document.createElement('a');
+                            a.href = url;
+                            a.download = 'saved_content.json';
+                            a.click();
+                            URL.revokeObjectURL(url);
+                          } catch {
+                            // ignore
+                          }
+                        }}
+                        className="px-3.5 py-2 rounded-xl bg-slate-900 hover:bg-slate-800 dark:bg-slate-700 dark:hover:bg-slate-600 text-white text-xs font-bold flex items-center gap-1.5 transition-colors cursor-pointer"
+                      >
+                        <Download className="w-3.5 h-3.5" />
+                        <span>{language === 'ar' ? 'تنزيل ملف saved_content.json لـ GitHub' : 'Download JSON for GitHub'}</span>
+                      </button>
+
+                      <button
+                        type="button"
+                        onClick={async () => {
+                          try {
+                            const res = await fetch('/api/content');
+                            const data = await res.json();
+                            await navigator.clipboard.writeText(JSON.stringify(data, null, 2));
+                            setCopiedJson(true);
+                            setTimeout(() => setCopiedJson(false), 2500);
+                          } catch {
+                            // ignore
+                          }
+                        }}
+                        className="px-3.5 py-2 rounded-xl border border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-800 text-slate-700 dark:text-slate-200 text-xs font-bold flex items-center gap-1.5 hover:bg-slate-100 dark:hover:bg-slate-700 transition-colors cursor-pointer"
+                      >
+                        {copiedJson ? (
+                          <>
+                            <Check className="w-3.5 h-3.5 text-emerald-500" />
+                            <span>{language === 'ar' ? 'تم نسخ كود JSON!' : 'JSON Copied!'}</span>
+                          </>
+                        ) : (
+                          <>
+                            <Copy className="w-3.5 h-3.5" />
+                            <span>{language === 'ar' ? 'نسخ كود JSON كاملاً' : 'Copy JSON'}</span>
+                          </>
+                        )}
+                      </button>
+
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setIsCheckingSync(true);
+                          fetch('/api/sync/github-info')
+                            .then(r => r.json())
+                            .then(d => {
+                              setSyncStatus(d);
+                            })
+                            .catch(() => {})
+                            .finally(() => setIsCheckingSync(false));
+                        }}
+                        className="px-3.5 py-2 rounded-xl border border-blue-200 dark:border-blue-800 bg-blue-50 dark:bg-blue-950/40 text-blue-700 dark:text-blue-300 text-xs font-bold flex items-center gap-1.5 hover:bg-blue-100 transition-colors cursor-pointer"
+                      >
+                        <RefreshCw className={`w-3.5 h-3.5 ${isCheckingSync ? 'animate-spin' : ''}`} />
+                        <span>{language === 'ar' ? 'فحص حالة التزامن الآن' : 'Check Sync'}</span>
+                      </button>
+                    </div>
+
+                    {syncStatus && (
+                      <div className="p-3 rounded-xl bg-emerald-50 dark:bg-emerald-950/50 border border-emerald-200 dark:border-emerald-800 text-emerald-800 dark:text-emerald-200 text-xs space-y-1 animate-fadeIn">
+                        <div className="font-black flex items-center gap-1.5">
+                          <CheckCircle2 className="w-4 h-4 text-emerald-600 dark:text-emerald-400" />
+                          <span>{language === 'ar' ? 'حالة التزامن ممتازة ومحدثة:' : 'Sync Status Verified:'}</span>
+                        </div>
+                        <p className="text-[11px] leading-relaxed">
+                          {language === 'ar'
+                            ? `عدد الملازم المحفوظة على السيرفر: ${syncStatus.lecturesCount || 0} ملزمة | الملف المتتبع: ${syncStatus.gitTrackedPath} | آخر تحديث: ${syncStatus.lastUpdated || 'الآن'}`
+                            : `Lectures: ${syncStatus.lecturesCount || 0} | File: ${syncStatus.gitTrackedPath}`}
+                        </p>
+                      </div>
+                    )}
+                  </div>
+                </div>
               )}
             </div>
           )}

@@ -103,6 +103,15 @@ export default function App() {
   // Active navigation tab
   const [activeTab, setActiveTab] = useState<'lectures' | 'summaries' | 'exams' | 'schedule' | 'quizzes' | 'dashboard'>('lectures');
   
+  // Helper to remove any Baath party materials as requested by the user
+  const isBaathMaterial = (item: any) => {
+    if (!item) return false;
+    if (item.subjectId === 'baath-crimes') return true;
+    const titleAr = String(item.titleAr || '');
+    const titleEn = String(item.titleEn || '');
+    return titleAr.includes('البعث') || titleEn.toLowerCase().includes('baath');
+  };
+
   // Academic Stage Filter
   const [selectedStage, setSelectedStage] = useState<Stage | 'all'>('all');
 
@@ -110,17 +119,23 @@ export default function App() {
   const [lectures, setLectures] = useState<Lecture[]>(() => {
     try {
       const saved = localStorage.getItem('saytara_lectures');
+      const deleted: string[] = JSON.parse(localStorage.getItem('saytara_deleted_lectures') || '[]');
       if (saved) {
         const parsed = JSON.parse(saved);
         if (Array.isArray(parsed)) {
-          const cleaned = parsed.filter((l: Lecture) => !l.id?.startsWith('lec-ct-'));
+          const cleaned = parsed.filter((l: Lecture) => 
+            !l.id?.startsWith('lec-ct-') && 
+            !isBaathMaterial(l) && 
+            !deleted.includes(l.id)
+          );
+          localStorage.setItem('saytara_lectures', JSON.stringify(cleaned));
           return cleaned;
         }
       }
     } catch {
       // fallback
     }
-    return INITIAL_LECTURES;
+    return INITIAL_LECTURES.filter(l => !isBaathMaterial(l));
   });
 
   // Dynamic Summaries with LocalStorage Persistence
@@ -129,12 +144,15 @@ export default function App() {
       const saved = localStorage.getItem('saytara_summaries');
       if (saved) {
         const parsed = JSON.parse(saved);
-        if (Array.isArray(parsed)) return parsed;
+        if (Array.isArray(parsed)) {
+          const cleaned = parsed.filter((s: Summary) => !isBaathMaterial(s));
+          return cleaned;
+        }
       }
     } catch {
       // fallback
     }
-    return INITIAL_SUMMARIES;
+    return INITIAL_SUMMARIES.filter(s => !isBaathMaterial(s));
   });
 
   // Dynamic Exams with LocalStorage Persistence
@@ -204,7 +222,7 @@ export default function App() {
   });
   const [showAdminModal, setShowAdminModal] = useState<boolean>(false);
   const [adminInitialSubjectId, setAdminInitialSubjectId] = useState<string | undefined>(undefined);
-  const [adminInitialTab, setAdminInitialTab] = useState<'lectures' | 'summaries' | 'schedule' | 'exams'>('lectures');
+  const [adminInitialTab, setAdminInitialTab] = useState<'lectures' | 'summaries' | 'schedule' | 'exams' | 'sync'>('lectures');
 
   // Active Quiz Modal state
   const [activeQuizLecture, setActiveQuizLecture] = useState<Lecture | null>(null);
@@ -278,13 +296,36 @@ export default function App() {
       // 1. Sync Lectures: Combine default lectures with server-persisted shared lectures
       if (Array.isArray(data.lectures)) {
         setLectures(prev => {
+          const serverDeleted = Array.isArray(data.deletedLectureIds) ? data.deletedLectureIds : [];
+          let localDeleted: string[] = [];
+          try {
+            localDeleted = JSON.parse(localStorage.getItem('saytara_deleted_lectures') || '[]');
+          } catch {
+            localDeleted = [];
+          }
+          const allDeleted = new Set([...serverDeleted, ...localDeleted]);
+
           const map = new Map<string, Lecture>();
-          // Base official lectures
-          INITIAL_LECTURES.forEach(l => map.set(l.id, l));
-          // Previous local custom items (if any exist)
-          prev.filter(l => l.isCustom).forEach(l => map.set(l.id, l));
+          // Base official lectures (excluding any deleted or baath lectures)
+          INITIAL_LECTURES.forEach(l => {
+            if (!allDeleted.has(l.id) && !isBaathMaterial(l)) {
+              map.set(l.id, l);
+            }
+          });
+
           // Server authoritative lectures (persisted for all students)
-          data.lectures.forEach(l => map.set(l.id, l));
+          data.lectures.forEach(l => {
+            if (!allDeleted.has(l.id) && !isBaathMaterial(l)) {
+              map.set(l.id, l);
+            }
+          });
+
+          // Previous local custom items (if not deleted and not baath)
+          prev.filter(l => l.isCustom && !allDeleted.has(l.id) && !isBaathMaterial(l)).forEach(l => {
+            if (!map.has(l.id)) {
+              map.set(l.id, l);
+            }
+          });
 
           const combined = Array.from(map.values());
           // Sort so custom/newly added lectures appear at the top
@@ -300,9 +341,9 @@ export default function App() {
       if (Array.isArray(data.summaries)) {
         setSummaries(prev => {
           const map = new Map<string, Summary>();
-          INITIAL_SUMMARIES.forEach(s => map.set(s.id, s));
-          prev.forEach(s => map.set(s.id, s));
-          data.summaries.forEach(s => map.set(s.id, s));
+          INITIAL_SUMMARIES.filter(s => !isBaathMaterial(s)).forEach(s => map.set(s.id, s));
+          prev.filter(s => !isBaathMaterial(s)).forEach(s => map.set(s.id, s));
+          data.summaries.filter(s => !isBaathMaterial(s)).forEach(s => map.set(s.id, s));
           const finalSummaries = Array.from(map.values());
           localStorage.setItem('saytara_summaries', JSON.stringify(finalSummaries));
           return finalSummaries;
@@ -313,9 +354,9 @@ export default function App() {
       if (Array.isArray(data.exams)) {
         setExams(prev => {
           const map = new Map<string, ExamQuestionPaper>();
-          INITIAL_EXAMS.forEach(e => map.set(e.id, e));
-          prev.forEach(e => map.set(e.id, e));
-          data.exams.forEach(e => map.set(e.id, e));
+          INITIAL_EXAMS.filter(e => !isBaathMaterial(e)).forEach(e => map.set(e.id, e));
+          prev.filter(e => !isBaathMaterial(e)).forEach(e => map.set(e.id, e));
+          data.exams.filter(e => !isBaathMaterial(e)).forEach(e => map.set(e.id, e));
           const finalExams = Array.from(map.values());
           localStorage.setItem('saytara_exams', JSON.stringify(finalExams));
           return finalExams;
@@ -355,12 +396,24 @@ export default function App() {
   // CONTENT MANAGEMENT HANDLERS (Admin Only - Shared With All Students)
   // --------------------------------------------------------------------------
   const handleAddLecture = (newLecture: Lecture) => {
+    if (isBaathMaterial(newLecture)) return;
+
     setLectures(prev => {
       const updated = [newLecture, ...prev.filter(l => l.id !== newLecture.id)];
       localStorage.setItem('saytara_lectures', JSON.stringify(updated));
       return updated;
     });
-    // Persist to server so it is immediately visible to all students!
+
+    // If it was in locally deleted list, remove it
+    try {
+      const deleted: string[] = JSON.parse(localStorage.getItem('saytara_deleted_lectures') || '[]');
+      const filtered = deleted.filter(id => id !== newLecture.id);
+      localStorage.setItem('saytara_deleted_lectures', JSON.stringify(filtered));
+    } catch {
+      // ignore
+    }
+
+    // Persist to server so it is immediately visible to all students across the shared link and saved in repo!
     saveSharedLecture(newLecture).catch(err => console.error(err));
   };
 
@@ -370,6 +423,18 @@ export default function App() {
       localStorage.setItem('saytara_lectures', JSON.stringify(updated));
       return updated;
     });
+
+    // Record in local deleted blacklist so periodic sync will never resurrect it
+    try {
+      const deleted: string[] = JSON.parse(localStorage.getItem('saytara_deleted_lectures') || '[]');
+      if (!deleted.includes(lectureId)) {
+        deleted.push(lectureId);
+        localStorage.setItem('saytara_deleted_lectures', JSON.stringify(deleted));
+      }
+    } catch {
+      // ignore
+    }
+
     deleteSharedLecture(lectureId).catch(err => console.error(err));
   };
 
@@ -433,7 +498,7 @@ export default function App() {
     deleteSharedExam(examId).catch(err => console.error(err));
   };
 
-  const handleOpenAdminTab = (tab: 'lectures' | 'summaries' | 'schedule' | 'exams', subjectId?: string) => {
+  const handleOpenAdminTab = (tab: 'lectures' | 'summaries' | 'schedule' | 'exams' | 'sync', subjectId?: string) => {
     setAdminInitialTab(tab);
     setAdminInitialSubjectId(subjectId);
     setShowAdminModal(true);
@@ -534,6 +599,7 @@ export default function App() {
                 setActiveTab('dashboard');
                 recordActivityToday(5);
               }}
+              isAdminUnlocked={isAdminUnlocked}
             />
           )}
 
