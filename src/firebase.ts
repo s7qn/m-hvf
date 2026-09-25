@@ -1,26 +1,9 @@
 import { initializeApp, getApps, getApp } from 'firebase/app';
 import { getAuth } from 'firebase/auth';
 import { getFirestore, doc, getDocFromServer } from 'firebase/firestore';
-import defaultConfig from '../firebase-applet-config.json';
+import firebaseConfig from '../firebase-applet-config.json';
 
-// Allow custom config override (e.g., if user inputs their personal project config for m-mhv)
-export function getActiveFirebaseConfig() {
-  try {
-    const customConfigStr = localStorage.getItem('saytara_firebase_custom_config');
-    if (customConfigStr) {
-      const parsed = JSON.parse(customConfigStr);
-      if (parsed && parsed.projectId) {
-        return parsed;
-      }
-    }
-  } catch {
-    // fallback to default
-  }
-  return defaultConfig;
-}
-
-const firebaseConfig = getActiveFirebaseConfig();
-
+// Authoritative active Firebase application
 export const app = !getApps().length ? initializeApp(firebaseConfig) : getApp();
 
 // CRITICAL: Must use firestoreDatabaseId when provided

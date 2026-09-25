@@ -299,49 +299,25 @@ export default function App() {
       const data = await fetchSharedContent();
       if (!data) return;
 
-      // 1. Sync Lectures: Combine default lectures with server-persisted shared lectures
+      // 1. Sync Lectures: Combine default lectures with cloud-persisted shared lectures
       if (Array.isArray(data.lectures)) {
-        setLectures(prev => {
-          const serverDeleted = Array.isArray(data.deletedLectureIds) ? data.deletedLectureIds : [];
-          let localDeleted: string[] = [];
-          try {
-            localDeleted = JSON.parse(localStorage.getItem('saytara_deleted_lectures') || '[]');
-          } catch {
-            localDeleted = [];
-          }
-          const allDeleted = new Set([...serverDeleted, ...localDeleted]);
-
+        setLectures(() => {
           const map = new Map<string, Lecture>();
-          // Base official lectures (excluding any deleted lectures)
-          INITIAL_LECTURES.forEach(l => {
-            if (!allDeleted.has(l.id)) {
-              map.set(l.id, l);
-            }
-          });
-
-          // Server authoritative lectures (persisted for all students)
+          // Base official lectures
+          INITIAL_LECTURES.forEach(l => map.set(l.id, l));
+          // Authoritative lectures from Firestore / shared cloud
           data.lectures.forEach(l => {
-            if (!allDeleted.has(l.id)) {
+            if (l && l.id) {
               const base = INITIAL_LECTURES.find(initL => initL.id === l.id);
-              const merged: Lecture = {
+              map.set(l.id, {
                 ...(base || {}),
                 ...l,
-                chapters: l.chapters || base?.chapters,
-                fullCurriculumTextAr: l.fullCurriculumTextAr || base?.fullCurriculumTextAr,
-              };
-              map.set(l.id, merged);
-            }
-          });
-
-          // Previous local custom items (if not deleted)
-          prev.filter(l => l.isCustom && !allDeleted.has(l.id)).forEach(l => {
-            if (!map.has(l.id)) {
-              map.set(l.id, l);
+                isCustom: l.isCustom ?? !base,
+              });
             }
           });
 
           const combined = Array.from(map.values());
-          // Sort so custom/newly added lectures appear at the top
           const custom = combined.filter(l => l.isCustom);
           const standard = combined.filter(l => !l.isCustom);
           const finalLectures = [...custom, ...standard];
@@ -352,11 +328,12 @@ export default function App() {
 
       // 2. Sync Summaries
       if (Array.isArray(data.summaries)) {
-        setSummaries(prev => {
+        setSummaries(() => {
           const map = new Map<string, Summary>();
           INITIAL_SUMMARIES.forEach(s => map.set(s.id, s));
-          prev.forEach(s => map.set(s.id, s));
-          data.summaries.forEach(s => map.set(s.id, s));
+          data.summaries.forEach(s => {
+            if (s && s.id) map.set(s.id, s);
+          });
           const finalSummaries = Array.from(map.values());
           localStorage.setItem('saytara_summaries', JSON.stringify(finalSummaries));
           return finalSummaries;
@@ -365,18 +342,19 @@ export default function App() {
 
       // 3. Sync Exams
       if (Array.isArray(data.exams)) {
-        setExams(prev => {
+        setExams(() => {
           const map = new Map<string, ExamQuestionPaper>();
           INITIAL_EXAMS.forEach(e => map.set(e.id, e));
-          prev.forEach(e => map.set(e.id, e));
-          data.exams.forEach(e => map.set(e.id, e));
+          data.exams.forEach(e => {
+            if (e && e.id) map.set(e.id, e);
+          });
           const finalExams = Array.from(map.values());
           localStorage.setItem('saytara_exams', JSON.stringify(finalExams));
           return finalExams;
         });
       }
 
-      // 4. Sync Schedule (if modified on server)
+      // 4. Sync Schedule (if modified on server or Firestore)
       if (Array.isArray(data.schedule) && data.schedule.length > 0) {
         setSchedule(data.schedule);
         localStorage.setItem('saytara_schedule', JSON.stringify(data.schedule));
@@ -400,51 +378,54 @@ export default function App() {
 
     try {
       unsubLectures = subscribeToFirestoreLectures((fsLectures) => {
-        if (Array.isArray(fsLectures) && fsLectures.length > 0) {
-          setLectures(prev => {
-            const map = new Map<string, Lecture>();
-            INITIAL_LECTURES.forEach(l => map.set(l.id, l));
-            prev.filter(l => l.isCustom).forEach(l => map.set(l.id, l));
-            fsLectures.forEach(l => {
+        setLectures(() => {
+          const map = new Map<string, Lecture>();
+          // 1. Official baseline lectures
+          INITIAL_LECTURES.forEach(l => map.set(l.id, l));
+          // 2. Real-time Cloud lectures from Firestore
+          fsLectures.forEach(l => {
+            if (l && l.id) {
               const base = INITIAL_LECTURES.find(initL => initL.id === l.id);
-              map.set(l.id, { ...(base || {}), ...l });
-            });
-            const combined = Array.from(map.values());
-            const custom = combined.filter(l => l.isCustom);
-            const standard = combined.filter(l => !l.isCustom);
-            const finalLectures = [...custom, ...standard];
-            localStorage.setItem('saytara_lectures', JSON.stringify(finalLectures));
-            return finalLectures;
+              map.set(l.id, {
+                ...(base || {}),
+                ...l,
+                isCustom: l.isCustom ?? !base,
+              });
+            }
           });
-        }
+          const combined = Array.from(map.values());
+          const custom = combined.filter(l => l.isCustom);
+          const standard = combined.filter(l => !l.isCustom);
+          const finalLectures = [...custom, ...standard];
+          localStorage.setItem('saytara_lectures', JSON.stringify(finalLectures));
+          return finalLectures;
+        });
       });
 
       unsubSummaries = subscribeToFirestoreSummaries((fsSummaries) => {
-        if (Array.isArray(fsSummaries) && fsSummaries.length > 0) {
-          setSummaries(prev => {
-            const map = new Map<string, Summary>();
-            INITIAL_SUMMARIES.forEach(s => map.set(s.id, s));
-            prev.forEach(s => map.set(s.id, s));
-            fsSummaries.forEach(s => map.set(s.id, s));
-            const finalSummaries = Array.from(map.values());
-            localStorage.setItem('saytara_summaries', JSON.stringify(finalSummaries));
-            return finalSummaries;
+        setSummaries(() => {
+          const map = new Map<string, Summary>();
+          INITIAL_SUMMARIES.forEach(s => map.set(s.id, s));
+          fsSummaries.forEach(s => {
+            if (s && s.id) map.set(s.id, s);
           });
-        }
+          const finalSummaries = Array.from(map.values());
+          localStorage.setItem('saytara_summaries', JSON.stringify(finalSummaries));
+          return finalSummaries;
+        });
       });
 
       unsubExams = subscribeToFirestoreExams((fsExams) => {
-        if (Array.isArray(fsExams) && fsExams.length > 0) {
-          setExams(prev => {
-            const map = new Map<string, ExamQuestionPaper>();
-            INITIAL_EXAMS.forEach(e => map.set(e.id, e));
-            prev.forEach(e => map.set(e.id, e));
-            fsExams.forEach(e => map.set(e.id, e));
-            const finalExams = Array.from(map.values());
-            localStorage.setItem('saytara_exams', JSON.stringify(finalExams));
-            return finalExams;
+        setExams(() => {
+          const map = new Map<string, ExamQuestionPaper>();
+          INITIAL_EXAMS.forEach(e => map.set(e.id, e));
+          fsExams.forEach(e => {
+            if (e && e.id) map.set(e.id, e);
           });
-        }
+          const finalExams = Array.from(map.values());
+          localStorage.setItem('saytara_exams', JSON.stringify(finalExams));
+          return finalExams;
+        });
       });
     } catch (subErr) {
       console.warn('[Sync] Firestore real-time listener note:', subErr);
@@ -469,7 +450,7 @@ export default function App() {
   }, []);
 
   // --------------------------------------------------------------------------
-  // CONTENT MANAGEMENT HANDLERS (Admin Only - Shared With All Students)
+  // CONTENT MANAGEMENT HANDLERS (Admin Only - Shared With All Students via Firestore)
   // --------------------------------------------------------------------------
   const handleAddLecture = (newLecture: Lecture) => {
     setLectures(prev => {
@@ -478,17 +459,8 @@ export default function App() {
       return updated;
     });
 
-    // If it was in locally deleted list, remove it
-    try {
-      const deleted: string[] = JSON.parse(localStorage.getItem('saytara_deleted_lectures') || '[]');
-      const filtered = deleted.filter(id => id !== newLecture.id);
-      localStorage.setItem('saytara_deleted_lectures', JSON.stringify(filtered));
-    } catch {
-      // ignore
-    }
-
-    // Persist to server so it is immediately visible to all students across the shared link and saved in repo!
-    saveSharedLecture(newLecture).catch(err => console.error(err));
+    // Persist directly to Firebase Firestore Cloud Database for all users
+    saveSharedLecture(newLecture).catch(err => console.error('[AddLecture Error]', err));
   };
 
   const handleDeleteLecture = (lectureId: string) => {
@@ -498,18 +470,8 @@ export default function App() {
       return updated;
     });
 
-    // Record in local deleted blacklist so periodic sync will never resurrect it
-    try {
-      const deleted: string[] = JSON.parse(localStorage.getItem('saytara_deleted_lectures') || '[]');
-      if (!deleted.includes(lectureId)) {
-        deleted.push(lectureId);
-        localStorage.setItem('saytara_deleted_lectures', JSON.stringify(deleted));
-      }
-    } catch {
-      // ignore
-    }
-
-    deleteSharedLecture(lectureId).catch(err => console.error(err));
+    // Delete directly from Firebase Firestore Cloud Database
+    deleteSharedLecture(lectureId).catch(err => console.error('[DeleteLecture Error]', err));
   };
 
   const handleAddSummary = (newSummary: Summary) => {

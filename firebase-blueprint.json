@@ -60,6 +60,20 @@
         "room": { "type": "string" }
       },
       "required": ["id", "day", "subject"]
+    },
+    "lectureFile": {
+      "title": "LectureFile",
+      "description": "Cloud-persisted PDF or document payload",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "fileName": { "type": "string" },
+        "fileType": { "type": "string" },
+        "fileSize": { "type": "string" },
+        "data": { "type": "string" },
+        "uploadedAt": { "type": "string" }
+      },
+      "required": ["id", "fileName"]
     }
   },
   "firestore": {
@@ -78,6 +92,10 @@
     "/schedule/{itemId}": {
       "schema": { "$ref": "#/entities/scheduleItem" },
       "description": "Collection of academic timetable slots"
+    },
+    "/lecture_files/{fileId}": {
+      "schema": { "$ref": "#/entities/lectureFile" },
+      "description": "Collection of cloud-stored document files"
     }
   }
 }

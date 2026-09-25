@@ -3,6 +3,14 @@ import path from 'path';
 import fs from 'fs';
 import { createServer as createViteServer } from 'vite';
 import { GoogleGenAI, Type } from '@google/genai';
+import { initializeApp, getApps } from 'firebase/app';
+import { getFirestore, doc, setDoc, getDoc, collection, getDocs, deleteDoc } from 'firebase/firestore';
+import firebaseConfig from './firebase-applet-config.json';
+
+const fbApp = !getApps().length ? initializeApp(firebaseConfig) : getApps()[0];
+const firestore = firebaseConfig.firestoreDatabaseId
+  ? getFirestore(fbApp, firebaseConfig.firestoreDatabaseId)
+  : getFirestore(fbApp);
 
 async function startServer() {
   const app = express();
@@ -143,9 +151,75 @@ async function startServer() {
   // "المحاضرة من اضيفها اريدها تظهر للكل مو بس الي يعني لكل الطلاب"
   // --------------------------------------------------------------------------
 
-  // 1. Get all shared content (Lectures, Summaries, Exams, Schedule)
-  app.get('/api/content', (req, res) => {
+  // 1. Get all shared content (Lectures, Summaries, Exams, Schedule) from Firestore & store
+  app.get('/api/content', async (req, res) => {
     try {
+      const store = getSharedStore();
+
+      // Read from Firestore Cloud Database as primary authoritative source
+      const [lecturesSnap, summariesSnap, examsSnap, scheduleSnap] = await Promise.all([
+        getDocs(collection(firestore, 'lectures')).catch(() => null),
+        getDocs(collection(firestore, 'summaries')).catch(() => null),
+        getDocs(collection(firestore, 'exams')).catch(() => null),
+        getDocs(collection(firestore, 'schedule')).catch(() => null),
+      ]);
+
+      const firestoreLectures: any[] = [];
+      if (lecturesSnap) {
+        lecturesSnap.forEach(d => {
+          const item = d.data();
+          if (item && item.id) firestoreLectures.push(item);
+        });
+      }
+
+      const firestoreSummaries: any[] = [];
+      if (summariesSnap) {
+        summariesSnap.forEach(d => {
+          const item = d.data();
+          if (item && item.id) firestoreSummaries.push(item);
+        });
+      }
+
+      const firestoreExams: any[] = [];
+      if (examsSnap) {
+        examsSnap.forEach(d => {
+          const item = d.data();
+          if (item && item.id) firestoreExams.push(item);
+        });
+      }
+
+      const firestoreSchedule: any[] = [];
+      if (scheduleSnap) {
+        scheduleSnap.forEach(d => {
+          const item = d.data();
+          if (item && item.id) firestoreSchedule.push(item);
+        });
+      }
+
+      // Merge: Firestore is primary
+      const lecturesMap = new Map();
+      store.lectures.forEach(l => lecturesMap.set(l.id, l));
+      firestoreLectures.forEach(l => lecturesMap.set(l.id, l));
+
+      const summariesMap = new Map();
+      store.summaries.forEach(s => summariesMap.set(s.id, s));
+      firestoreSummaries.forEach(s => summariesMap.set(s.id, s));
+
+      const examsMap = new Map();
+      store.exams.forEach(e => examsMap.set(e.id, e));
+      firestoreExams.forEach(e => examsMap.set(e.id, e));
+
+      return res.json({
+        success: true,
+        lectures: Array.from(lecturesMap.values()),
+        summaries: Array.from(summariesMap.values()),
+        exams: Array.from(examsMap.values()),
+        schedule: firestoreSchedule.length > 0 ? firestoreSchedule : store.schedule,
+        deletedLectureIds: [],
+        lastUpdated: new Date().toISOString(),
+        source: 'firestore',
+      });
+    } catch (err: any) {
       const store = getSharedStore();
       res.json({
         success: true,
@@ -153,31 +227,39 @@ async function startServer() {
         summaries: store.summaries,
         exams: store.exams,
         schedule: store.schedule,
-        deletedLectureIds: store.deletedLectureIds || [],
+        deletedLectureIds: [],
         lastUpdated: store.lastUpdated,
       });
-    } catch (err: any) {
-      res.status(500).json({ success: false, error: err?.message || 'Failed to read content' });
     }
   });
 
-  // 2. Add / Update Lecture (Saves to server so it appears for all students and tracks in git files)
-  app.post('/api/content/lectures', (req, res) => {
+  // 2. Add / Update Lecture (Saves to Firestore and server store)
+  app.post('/api/content/lectures', async (req, res) => {
     try {
       const { lecture } = req.body || {};
       if (!lecture || !lecture.id) {
         return res.status(400).json({ success: false, error: 'Invalid lecture data' });
       }
 
-      const store = getSharedStore();
-      // If was previously marked as deleted, remove from deleted list
-      if (Array.isArray(store.deletedLectureIds)) {
-        store.deletedLectureIds = store.deletedLectureIds.filter(id => id !== lecture.id);
+      // 1. Write directly to Firestore Cloud Database
+      try {
+        const cleanLecture = {
+          ...lecture,
+          createdAt: lecture.uploadDate || new Date().toISOString().split('T')[0],
+          updatedAt: new Date().toISOString(),
+          isCustom: true,
+        };
+        await setDoc(doc(firestore, 'lectures', lecture.id), JSON.parse(JSON.stringify(cleanLecture)), { merge: true });
+        console.log(`[Server] Saved lecture to Firestore: "${lecture.titleAr}" (${lecture.id})`);
+      } catch (fsErr) {
+        console.error('[Server] Firestore save error:', fsErr);
       }
-      // Remove any existing copy with the same ID, and prepend the new/updated lecture
+
+      // 2. Local fallback store
+      const store = getSharedStore();
       store.lectures = [lecture, ...store.lectures.filter(l => l.id !== lecture.id)];
       saveSharedStore(store);
-      console.log(`[SharedStore] Lecture added for all students & synced to repo: "${lecture.titleAr}" (${lecture.id})`);
+
       res.json({
         success: true,
         count: store.lectures.length,
@@ -189,21 +271,23 @@ async function startServer() {
     }
   });
 
-  // 3. Delete Lecture from shared store & mark as permanently deleted across devices
-  app.delete('/api/content/lectures/:id', (req, res) => {
+  // 3. Delete Lecture from Firestore and shared store
+  app.delete('/api/content/lectures/:id', async (req, res) => {
     try {
       const { id } = req.params;
+      // 1. Delete from Firestore
+      try {
+        await deleteDoc(doc(firestore, 'lectures', id));
+        console.log(`[Server] Deleted lecture from Firestore: ${id}`);
+      } catch (fsErr) {
+        console.error('[Server] Firestore delete error:', fsErr);
+      }
+
       const store = getSharedStore();
       store.lectures = store.lectures.filter(l => l.id !== id);
-      if (!Array.isArray(store.deletedLectureIds)) {
-        store.deletedLectureIds = [];
-      }
-      if (!store.deletedLectureIds.includes(id)) {
-        store.deletedLectureIds.push(id);
-      }
       saveSharedStore(store);
-      console.log(`[SharedStore] Lecture deleted and blacklisted: ${id}`);
-      res.json({ success: true, deletedId: id, deletedLectureIds: store.deletedLectureIds });
+
+      res.json({ success: true, deletedId: id });
     } catch (err: any) {
       res.status(500).json({ success: false, error: err?.message || 'Failed to delete lecture' });
     }
@@ -228,13 +312,20 @@ async function startServer() {
     }
   });
 
-  // 4. Add / Update Summary
-  app.post('/api/content/summaries', (req, res) => {
+  // 4. Add / Update Summary (Firestore + store)
+  app.post('/api/content/summaries', async (req, res) => {
     try {
       const { summary } = req.body || {};
       if (!summary || !summary.id) {
         return res.status(400).json({ success: false, error: 'Invalid summary data' });
       }
+
+      try {
+        await setDoc(doc(firestore, 'summaries', summary.id), JSON.parse(JSON.stringify(summary)), { merge: true });
+      } catch (fsErr) {
+        console.error('[Server] Firestore save summary error:', fsErr);
+      }
+
       const store = getSharedStore();
       store.summaries = [summary, ...store.summaries.filter(s => s.id !== summary.id)];
       saveSharedStore(store);
@@ -244,10 +335,16 @@ async function startServer() {
     }
   });
 
-  // 5. Delete Summary
-  app.delete('/api/content/summaries/:id', (req, res) => {
+  // 5. Delete Summary (Firestore + store)
+  app.delete('/api/content/summaries/:id', async (req, res) => {
     try {
       const { id } = req.params;
+      try {
+        await deleteDoc(doc(firestore, 'summaries', id));
+      } catch (fsErr) {
+        console.error('[Server] Firestore delete summary error:', fsErr);
+      }
+
       const store = getSharedStore();
       store.summaries = store.summaries.filter(s => s.id !== id);
       saveSharedStore(store);
@@ -257,13 +354,20 @@ async function startServer() {
     }
   });
 
-  // 6. Add / Update Exam
-  app.post('/api/content/exams', (req, res) => {
+  // 6. Add / Update Exam (Firestore + store)
+  app.post('/api/content/exams', async (req, res) => {
     try {
       const { exam } = req.body || {};
       if (!exam || !exam.id) {
         return res.status(400).json({ success: false, error: 'Invalid exam data' });
       }
+
+      try {
+        await setDoc(doc(firestore, 'exams', exam.id), JSON.parse(JSON.stringify(exam)), { merge: true });
+      } catch (fsErr) {
+        console.error('[Server] Firestore save exam error:', fsErr);
+      }
+
       const store = getSharedStore();
       store.exams = [exam, ...store.exams.filter(e => e.id !== exam.id)];
       saveSharedStore(store);
@@ -273,10 +377,16 @@ async function startServer() {
     }
   });
 
-  // 7. Delete Exam
-  app.delete('/api/content/exams/:id', (req, res) => {
+  // 7. Delete Exam (Firestore + store)
+  app.delete('/api/content/exams/:id', async (req, res) => {
     try {
       const { id } = req.params;
+      try {
+        await deleteDoc(doc(firestore, 'exams', id));
+      } catch (fsErr) {
+        console.error('[Server] Firestore delete exam error:', fsErr);
+      }
+
       const store = getSharedStore();
       store.exams = store.exams.filter(e => e.id !== id);
       saveSharedStore(store);
@@ -286,13 +396,20 @@ async function startServer() {
     }
   });
 
-  // 8. Add / Update Schedule Item
-  app.post('/api/content/schedule', (req, res) => {
+  // 8. Add / Update Schedule Item (Firestore + store)
+  app.post('/api/content/schedule', async (req, res) => {
     try {
       const { scheduleItem } = req.body || {};
       if (!scheduleItem || !scheduleItem.id) {
         return res.status(400).json({ success: false, error: 'Invalid schedule item data' });
       }
+
+      try {
+        await setDoc(doc(firestore, 'schedule', scheduleItem.id), JSON.parse(JSON.stringify(scheduleItem)), { merge: true });
+      } catch (fsErr) {
+        console.error('[Server] Firestore save schedule error:', fsErr);
+      }
+
       const store = getSharedStore();
       const currentList = Array.isArray(store.schedule) ? store.schedule : [];
       store.schedule = [scheduleItem, ...currentList.filter(item => item.id !== scheduleItem.id)];
@@ -303,10 +420,16 @@ async function startServer() {
     }
   });
 
-  // 9. Delete Schedule Item
-  app.delete('/api/content/schedule/:id', (req, res) => {
+  // 9. Delete Schedule Item (Firestore + store)
+  app.delete('/api/content/schedule/:id', async (req, res) => {
     try {
       const { id } = req.params;
+      try {
+        await deleteDoc(doc(firestore, 'schedule', id));
+      } catch (fsErr) {
+        console.error('[Server] Firestore delete schedule error:', fsErr);
+      }
+
       const store = getSharedStore();
       if (Array.isArray(store.schedule)) {
         store.schedule = store.schedule.filter(item => item.id !== id);

@@ -27,6 +27,7 @@ import {
 import { Lecture, Subject, Language, LectureChapter } from '../types';
 import { TRANSLATIONS } from '../data/translations';
 import { uploadSharedFile } from '../services/contentApi';
+import { getCloudFile, downloadCloudFile } from '../services/cloudFileStorage';
 
 interface LectureViewerModalProps {
   lecture: Lecture;
@@ -54,6 +55,35 @@ export const LectureViewerModal: React.FC<LectureViewerModalProps> = ({
   const t = TRANSLATIONS[language];
   const [currentLecture, setCurrentLecture] = useState<Lecture>(initialLecture);
   const fileInputRef = useRef<HTMLInputElement>(null);
+
+  const [resolvedBlobUrl, setResolvedBlobUrl] = useState<string | null>(null);
+  const [isLoadingPdf, setIsLoadingPdf] = useState(false);
+
+  // Resolve cloud file if URL starts with cloud-file://
+  React.useEffect(() => {
+    let active = true;
+    if (currentLecture.fileUrl) {
+      if (currentLecture.fileUrl.startsWith('cloud-file://')) {
+        setIsLoadingPdf(true);
+        const fileId = currentLecture.fileUrl.replace('cloud-file://', '');
+        getCloudFile(fileId).then(res => {
+          if (active && res && res.blobUrl) {
+            setResolvedBlobUrl(res.blobUrl);
+          }
+          if (active) setIsLoadingPdf(false);
+        }).catch(() => {
+          if (active) setIsLoadingPdf(false);
+        });
+      } else {
+        setResolvedBlobUrl(currentLecture.fileUrl);
+      }
+    } else {
+      setResolvedBlobUrl(null);
+    }
+    return () => {
+      active = false;
+    };
+  }, [currentLecture.fileUrl]);
 
   const hasPdfFile = Boolean(currentLecture.fileUrl);
   const hasFullChapters = Boolean(currentLecture.chapters && currentLecture.chapters.length > 0);
@@ -94,10 +124,15 @@ export const LectureViewerModal: React.FC<LectureViewerModalProps> = ({
     window.print();
   };
 
-  const handleDownloadFullBooklet = () => {
+  const handleDownloadFullBooklet = async () => {
     if (currentLecture.fileUrl) {
+      if (currentLecture.fileUrl.startsWith('cloud-file://')) {
+        const fileId = currentLecture.fileUrl.replace('cloud-file://', '');
+        const success = await downloadCloudFile(fileId, currentLecture.fileName || `${currentLecture.titleAr || 'Lecture'}.pdf`);
+        if (success) return;
+      }
       const a = document.createElement('a');
-      a.href = currentLecture.fileUrl;
+      a.href = resolvedBlobUrl || currentLecture.fileUrl;
       a.download = currentLecture.fileName || `${currentLecture.titleAr || 'Lecture'}.pdf`;
       a.target = '_blank';
       a.click();
@@ -374,28 +409,37 @@ export const LectureViewerModal: React.FC<LectureViewerModalProps> = ({
 
                     <div className="flex items-center gap-2">
                       <button
-                        onClick={() => window.open(currentLecture.fileUrl, '_blank')}
+                        onClick={() => {
+                          const target = resolvedBlobUrl || currentLecture.fileUrl;
+                          if (target) window.open(target, '_blank');
+                        }}
                         className="px-3 py-1.5 rounded-lg bg-white dark:bg-slate-900 hover:bg-slate-50 border border-slate-300 dark:border-slate-700 text-slate-700 dark:text-slate-200 font-bold flex items-center gap-1 transition-colors cursor-pointer"
                       >
                         <Maximize2 className="w-3.5 h-3.5" />
                         <span>{language === 'ar' ? 'فتح بملء الشاشة' : 'Full Screen'}</span>
                       </button>
 
-                      <a
-                        href={currentLecture.fileUrl}
-                        download={currentLecture.fileName || 'lecture.pdf'}
+                      <button
+                        type="button"
+                        onClick={handleDownloadFullBooklet}
                         className="px-3 py-1.5 rounded-lg bg-blue-600 hover:bg-blue-700 text-white font-bold flex items-center gap-1 transition-colors cursor-pointer"
                       >
                         <Download className="w-3.5 h-3.5" />
                         <span>{language === 'ar' ? 'تحميل الملف' : 'Download'}</span>
-                      </a>
+                      </button>
                     </div>
                   </div>
 
                   {/* PDF iFrame */}
-                  <div className="w-full h-[65vh] rounded-2xl overflow-hidden border border-slate-300 dark:border-slate-700 bg-slate-100 dark:bg-slate-800 shadow-inner">
+                  <div className="w-full h-[65vh] rounded-2xl overflow-hidden border border-slate-300 dark:border-slate-700 bg-slate-100 dark:bg-slate-800 shadow-inner relative">
+                    {isLoadingPdf && (
+                      <div className="absolute inset-0 bg-slate-900/40 backdrop-blur-xs flex items-center justify-center z-10 text-white font-bold text-xs gap-2">
+                        <span className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" />
+                        <span>{language === 'ar' ? 'جارٍ تحميل ملف الـ PDF من السحابة...' : 'Loading PDF from cloud...'}</span>
+                      </div>
+                    )}
                     <iframe
-                      src={`${currentLecture.fileUrl}#view=FitH`}
+                      src={`${resolvedBlobUrl || currentLecture.fileUrl}#view=FitH`}
                       title={currentLecture.titleAr}
                       className="w-full h-full border-0"
                     />

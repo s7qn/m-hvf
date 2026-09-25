@@ -34,6 +34,17 @@ service cloud.firestore {
       allow write: if isValidId(itemId);
     }
 
+    // Cloud-Stored Lecture Files (PDFs & Documents)
+    match /lecture_files/{fileId} {
+      allow read: if true;
+      allow write: if isValidId(fileId);
+
+      match /chunks/{chunkId} {
+        allow read: if true;
+        allow write: if isValidId(chunkId);
+      }
+    }
+
     // Health / Connection Test
     match /test/{testId} {
       allow read, write: if true;

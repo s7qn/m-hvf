@@ -24,15 +24,22 @@ export async function initFirestoreConnection() {
 }
 
 /**
- * Save Lecture to Firestore
+ * Save Lecture to Firestore Cloud Database
  */
 export async function saveLectureToFirestore(lecture: Lecture): Promise<boolean> {
   const path = 'lectures';
   try {
     const lectureRef = doc(db, path, lecture.id);
-    // Remove any undefined fields for clean firestore storage
-    const cleanLecture = JSON.parse(JSON.stringify(lecture));
-    await setDoc(lectureRef, cleanLecture, { merge: true });
+    const payload = {
+      ...lecture,
+      createdAt: lecture.uploadDate || new Date().toISOString().split('T')[0],
+      updatedAt: new Date().toISOString(),
+      isCustom: true,
+    };
+    // Ensure payload is JSON-serializable without undefined fields
+    const sanitized = JSON.parse(JSON.stringify(payload));
+    await setDoc(lectureRef, sanitized, { merge: true });
+    console.log(`[Firestore] Successfully saved lecture: "${lecture.titleAr}" (${lecture.id})`);
     return true;
   } catch (error) {
     handleFirestoreError(error, OperationType.WRITE, `${path}/${lecture.id}`);
@@ -48,6 +55,7 @@ export async function deleteLectureFromFirestore(lectureId: string): Promise<boo
   try {
     const lectureRef = doc(db, path, lectureId);
     await deleteDoc(lectureRef);
+    console.log(`[Firestore] Successfully deleted lecture: ${lectureId}`);
     return true;
   } catch (error) {
     handleFirestoreError(error, OperationType.DELETE, `${path}/${lectureId}`);
@@ -62,8 +70,9 @@ export async function saveSummaryToFirestore(summary: Summary): Promise<boolean>
   const path = 'summaries';
   try {
     const summaryRef = doc(db, path, summary.id);
-    const cleanSummary = JSON.parse(JSON.stringify(summary));
-    await setDoc(summaryRef, cleanSummary, { merge: true });
+    const sanitized = JSON.parse(JSON.stringify(summary));
+    await setDoc(summaryRef, sanitized, { merge: true });
+    console.log(`[Firestore] Successfully saved summary: "${summary.titleAr}" (${summary.id})`);
     return true;
   } catch (error) {
     handleFirestoreError(error, OperationType.WRITE, `${path}/${summary.id}`);
@@ -79,6 +88,7 @@ export async function deleteSummaryFromFirestore(summaryId: string): Promise<boo
   try {
     const summaryRef = doc(db, path, summaryId);
     await deleteDoc(summaryRef);
+    console.log(`[Firestore] Successfully deleted summary: ${summaryId}`);
     return true;
   } catch (error) {
     handleFirestoreError(error, OperationType.DELETE, `${path}/${summaryId}`);
@@ -93,8 +103,9 @@ export async function saveExamToFirestore(exam: ExamQuestionPaper): Promise<bool
   const path = 'exams';
   try {
     const examRef = doc(db, path, exam.id);
-    const cleanExam = JSON.parse(JSON.stringify(exam));
-    await setDoc(examRef, cleanExam, { merge: true });
+    const sanitized = JSON.parse(JSON.stringify(exam));
+    await setDoc(examRef, sanitized, { merge: true });
+    console.log(`[Firestore] Successfully saved exam: "${exam.titleAr}" (${exam.id})`);
     return true;
   } catch (error) {
     handleFirestoreError(error, OperationType.WRITE, `${path}/${exam.id}`);
@@ -110,6 +121,7 @@ export async function deleteExamFromFirestore(examId: string): Promise<boolean> 
   try {
     const examRef = doc(db, path, examId);
     await deleteDoc(examRef);
+    console.log(`[Firestore] Successfully deleted exam: ${examId}`);
     return true;
   } catch (error) {
     handleFirestoreError(error, OperationType.DELETE, `${path}/${examId}`);
@@ -124,8 +136,9 @@ export async function saveScheduleItemToFirestore(item: ScheduleItem): Promise<b
   const path = 'schedule';
   try {
     const itemRef = doc(db, path, item.id);
-    const cleanItem = JSON.parse(JSON.stringify(item));
-    await setDoc(itemRef, cleanItem, { merge: true });
+    const sanitized = JSON.parse(JSON.stringify(item));
+    await setDoc(itemRef, sanitized, { merge: true });
+    console.log(`[Firestore] Successfully saved schedule item: ${item.id}`);
     return true;
   } catch (error) {
     handleFirestoreError(error, OperationType.WRITE, `${path}/${item.id}`);
@@ -141,6 +154,7 @@ export async function deleteScheduleItemFromFirestore(itemId: string): Promise<b
   try {
     const itemRef = doc(db, path, itemId);
     await deleteDoc(itemRef);
+    console.log(`[Firestore] Successfully deleted schedule item: ${itemId}`);
     return true;
   } catch (error) {
     handleFirestoreError(error, OperationType.DELETE, `${path}/${itemId}`);
@@ -149,7 +163,7 @@ export async function deleteScheduleItemFromFirestore(itemId: string): Promise<b
 }
 
 /**
- * One-time fetch of all content directly from Firestore
+ * Fetch all content directly from Firestore
  */
 export async function fetchAllFirestoreContent(): Promise<FirestoreContentState | null> {
   try {
@@ -192,7 +206,7 @@ export async function fetchAllFirestoreContent(): Promise<FirestoreContentState 
 }
 
 /**
- * Subscribe in real-time to Firestore lectures collection
+ * Real-time listener for Firestore lectures
  */
 export function subscribeToFirestoreLectures(
   onUpdate: (lectures: Lecture[]) => void,
@@ -212,14 +226,14 @@ export function subscribeToFirestoreLectures(
       onUpdate(lectures);
     },
     (error) => {
-      handleFirestoreError(error, OperationType.GET, path);
+      console.error('[Firestore Snapshot] Lectures error:', error);
       if (onError) onError(error);
     }
   );
 }
 
 /**
- * Subscribe in real-time to Firestore summaries collection
+ * Real-time listener for Firestore summaries
  */
 export function subscribeToFirestoreSummaries(
   onUpdate: (summaries: Summary[]) => void,
@@ -239,14 +253,14 @@ export function subscribeToFirestoreSummaries(
       onUpdate(summaries);
     },
     (error) => {
-      handleFirestoreError(error, OperationType.GET, path);
+      console.error('[Firestore Snapshot] Summaries error:', error);
       if (onError) onError(error);
     }
   );
 }
 
 /**
- * Subscribe in real-time to Firestore exams collection
+ * Real-time listener for Firestore exams
  */
 export function subscribeToFirestoreExams(
   onUpdate: (exams: ExamQuestionPaper[]) => void,
@@ -266,7 +280,34 @@ export function subscribeToFirestoreExams(
       onUpdate(exams);
     },
     (error) => {
-      handleFirestoreError(error, OperationType.GET, path);
+      console.error('[Firestore Snapshot] Exams error:', error);
+      if (onError) onError(error);
+    }
+  );
+}
+
+/**
+ * Real-time listener for Firestore schedule
+ */
+export function subscribeToFirestoreSchedule(
+  onUpdate: (schedule: ScheduleItem[]) => void,
+  onError?: (err: unknown) => void
+) {
+  const path = 'schedule';
+  return onSnapshot(
+    collection(db, path),
+    (snapshot) => {
+      const schedule: ScheduleItem[] = [];
+      snapshot.forEach(d => {
+        const item = d.data();
+        if (item && item.id) {
+          schedule.push(item as ScheduleItem);
+        }
+      });
+      onUpdate(schedule);
+    },
+    (error) => {
+      console.error('[Firestore Snapshot] Schedule error:', error);
       if (onError) onError(error);
     }
   );

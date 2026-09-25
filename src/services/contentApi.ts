@@ -10,6 +10,7 @@ import {
   deleteScheduleItemFromFirestore,
   fetchAllFirestoreContent
 } from './firestoreSync';
+import { uploadFileToCloud } from './cloudFileStorage';
 
 export interface SharedContentResponse {
   success: boolean;
@@ -299,10 +300,27 @@ export async function resetSharedSchedule(): Promise<boolean> {
 }
 
 /**
- * Upload a lecture file (PDF, DOCX, TXT) to the shared server
- * so that any student can download and read the real file.
+ * Upload a lecture file (PDF, DOCX, TXT) directly to Cloud Database and shared server
+ * so that any student on any browser or device can view and download the real file.
  */
 export async function uploadSharedFile(file: File): Promise<{ fileUrl: string; fileSize: string; fileName: string } | null> {
+  // 1. Primary: Save directly to Firebase Firestore Cloud Database
+  let cloudResult: { fileUrl: string; fileSize: string; fileName: string } | null = null;
+  try {
+    const cloudRes = await uploadFileToCloud(file);
+    if (cloudRes && cloudRes.fileUrl) {
+      cloudResult = {
+        fileUrl: cloudRes.fileUrl,
+        fileSize: cloudRes.fileSize,
+        fileName: cloudRes.fileName,
+      };
+      console.log(`[ContentAPI] File successfully uploaded to Firestore Cloud: ${cloudRes.fileName} (${cloudRes.fileUrl})`);
+    }
+  } catch (cloudErr) {
+    console.warn('[ContentAPI] Cloud upload error, proceeding with server upload:', cloudErr);
+  }
+
+  // 2. Also send to server /api/upload as supplementary local file copy
   return new Promise((resolve) => {
     try {
       const reader = new FileReader();
@@ -321,8 +339,9 @@ export async function uploadSharedFile(file: File): Promise<{ fileUrl: string; f
           });
           const data = await res.json();
           if (data && data.success && data.fileUrl) {
+            // If cloudResult succeeded, return the cloud-file URL so all devices see it; otherwise server url
             resolve({
-              fileUrl: data.fileUrl,
+              fileUrl: cloudResult ? cloudResult.fileUrl : data.fileUrl,
               fileSize: data.fileSize || `${(file.size / (1024 * 1024)).toFixed(1)} MB`,
               fileName: data.fileName || file.name,
             });
@@ -331,12 +350,12 @@ export async function uploadSharedFile(file: File): Promise<{ fileUrl: string; f
         } catch (postErr) {
           console.error('[ContentAPI] Upload request error:', postErr);
         }
-        resolve(null);
+        resolve(cloudResult);
       };
-      reader.onerror = () => resolve(null);
+      reader.onerror = () => resolve(cloudResult);
       reader.readAsDataURL(file);
     } catch {
-      resolve(null);
+      resolve(cloudResult);
     }
   });
 }
