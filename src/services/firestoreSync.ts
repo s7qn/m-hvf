@@ -41,7 +41,11 @@ export async function saveLectureToFirestore(lecture: Lecture): Promise<boolean>
     await setDoc(lectureRef, sanitized, { merge: true });
     console.log(`[Firestore] Successfully saved lecture: "${lecture.titleAr}" (${lecture.id})`);
     return true;
-  } catch (error) {
+  } catch (error: any) {
+    if (error?.code === 'resource-exhausted' || error?.message?.includes('RESOURCE_EXHAUSTED') || error?.message?.includes('Write stream')) {
+      console.warn('[Firestore] Project daily write quota exceeded or stream busy. Falling back seamlessly to server store.');
+      return false;
+    }
     handleFirestoreError(error, OperationType.WRITE, `${path}/${lecture.id}`);
     return false;
   }
@@ -57,7 +61,10 @@ export async function deleteLectureFromFirestore(lectureId: string): Promise<boo
     await deleteDoc(lectureRef);
     console.log(`[Firestore] Successfully deleted lecture: ${lectureId}`);
     return true;
-  } catch (error) {
+  } catch (error: any) {
+    if (error?.code === 'resource-exhausted' || error?.message?.includes('RESOURCE_EXHAUSTED')) {
+      return false;
+    }
     handleFirestoreError(error, OperationType.DELETE, `${path}/${lectureId}`);
     return false;
   }
@@ -74,7 +81,10 @@ export async function saveSummaryToFirestore(summary: Summary): Promise<boolean>
     await setDoc(summaryRef, sanitized, { merge: true });
     console.log(`[Firestore] Successfully saved summary: "${summary.titleAr}" (${summary.id})`);
     return true;
-  } catch (error) {
+  } catch (error: any) {
+    if (error?.code === 'resource-exhausted' || error?.message?.includes('RESOURCE_EXHAUSTED') || error?.message?.includes('Write stream')) {
+      return false;
+    }
     handleFirestoreError(error, OperationType.WRITE, `${path}/${summary.id}`);
     return false;
   }
@@ -90,7 +100,10 @@ export async function deleteSummaryFromFirestore(summaryId: string): Promise<boo
     await deleteDoc(summaryRef);
     console.log(`[Firestore] Successfully deleted summary: ${summaryId}`);
     return true;
-  } catch (error) {
+  } catch (error: any) {
+    if (error?.code === 'resource-exhausted' || error?.message?.includes('RESOURCE_EXHAUSTED')) {
+      return false;
+    }
     handleFirestoreError(error, OperationType.DELETE, `${path}/${summaryId}`);
     return false;
   }
@@ -107,7 +120,10 @@ export async function saveExamToFirestore(exam: ExamQuestionPaper): Promise<bool
     await setDoc(examRef, sanitized, { merge: true });
     console.log(`[Firestore] Successfully saved exam: "${exam.titleAr}" (${exam.id})`);
     return true;
-  } catch (error) {
+  } catch (error: any) {
+    if (error?.code === 'resource-exhausted' || error?.message?.includes('RESOURCE_EXHAUSTED') || error?.message?.includes('Write stream')) {
+      return false;
+    }
     handleFirestoreError(error, OperationType.WRITE, `${path}/${exam.id}`);
     return false;
   }
@@ -123,7 +139,10 @@ export async function deleteExamFromFirestore(examId: string): Promise<boolean> 
     await deleteDoc(examRef);
     console.log(`[Firestore] Successfully deleted exam: ${examId}`);
     return true;
-  } catch (error) {
+  } catch (error: any) {
+    if (error?.code === 'resource-exhausted' || error?.message?.includes('RESOURCE_EXHAUSTED')) {
+      return false;
+    }
     handleFirestoreError(error, OperationType.DELETE, `${path}/${examId}`);
     return false;
   }
@@ -140,7 +159,10 @@ export async function saveScheduleItemToFirestore(item: ScheduleItem): Promise<b
     await setDoc(itemRef, sanitized, { merge: true });
     console.log(`[Firestore] Successfully saved schedule item: ${item.id}`);
     return true;
-  } catch (error) {
+  } catch (error: any) {
+    if (error?.code === 'resource-exhausted' || error?.message?.includes('RESOURCE_EXHAUSTED') || error?.message?.includes('Write stream')) {
+      return false;
+    }
     handleFirestoreError(error, OperationType.WRITE, `${path}/${item.id}`);
     return false;
   }
