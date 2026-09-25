@@ -30,7 +30,10 @@ import {
   Share2,
   ExternalLink,
   Download,
-  GitBranch
+  GitBranch,
+  Database,
+  Cloud,
+  Server
 } from 'lucide-react';
 import { Subject, Lecture, Quiz, QuizQuestion, Stage, Language, Summary, ExamQuestionPaper, ScheduleItem } from '../types';
 import { TRANSLATIONS } from '../data/translations';
@@ -73,12 +76,7 @@ export const AdminAddModal: React.FC<AdminAddModalProps> = ({
 }) => {
   const t = TRANSLATIONS[language];
 
-  // Filter out any unwanted Baath material
-  const availableSubjects = subjects.filter(s => 
-    s.id !== 'baath-crimes' && 
-    !s.nameAr.includes('البعث') && 
-    !s.nameEn.toLowerCase().includes('baath')
-  );
+  const availableSubjects = subjects;
 
   // Current active modal tab
   const [activeSubTab, setActiveSubTab] = useState<'lectures' | 'summaries' | 'schedule' | 'exams' | 'sync'>(initialTab);
@@ -88,6 +86,13 @@ export const AdminAddModal: React.FC<AdminAddModalProps> = ({
   const [copiedJson, setCopiedJson] = useState(false);
   const [syncStatus, setSyncStatus] = useState<any>(null);
   const [isCheckingSync, setIsCheckingSync] = useState(false);
+
+  // Firebase Configuration & Status state
+  const [showFirebaseConfigPanel, setShowFirebaseConfigPanel] = useState(false);
+  const [customFirebaseJson, setCustomFirebaseJson] = useState(() => {
+    return localStorage.getItem('saytara_firebase_custom_config') || '';
+  });
+  const [firebaseConfigMsg, setFirebaseConfigMsg] = useState('');
 
   // Auth state
   const [passcode, setPasscode] = useState('');
@@ -1918,6 +1923,171 @@ export const AdminAddModal: React.FC<AdminAddModalProps> = ({
                         ? 'شارك هذا الرابط مع زملائك الطلاب. المنصة مبرمجة لمزامنة أي ملزمة جديدة تضيفها في غضون ثوانٍ تلقائياً عبر السيرفر دون الحاجة لإعادة الإرسال.'
                         : 'Share this public link with students. Any lecture you add is synced to every connected device automatically.'}
                     </p>
+                  </div>
+
+                  {/* Card 1.5: Firebase Firestore Cloud Database */}
+                  <div className="bg-amber-500/5 dark:bg-amber-500/10 p-5 rounded-2xl border border-amber-300/40 dark:border-amber-500/30 space-y-4">
+                    <div className="flex items-center justify-between gap-3">
+                      <div className="flex items-center gap-2.5">
+                        <div className="w-9 h-9 rounded-xl bg-amber-500 text-white flex items-center justify-center shadow-sm">
+                          <Database className="w-5 h-5" />
+                        </div>
+                        <div>
+                          <h4 className="text-sm font-black text-slate-900 dark:text-white flex items-center gap-2">
+                            <span>{language === 'ar' ? 'قاعدة بيانات Firebase Firestore السحابية' : 'Firebase Firestore Cloud Database'}</span>
+                            <span className="px-2 py-0.5 rounded-full bg-emerald-100 dark:bg-emerald-950/60 text-emerald-700 dark:text-emerald-300 font-bold text-[10px]">
+                              {language === 'ar' ? 'مفعلة ومتصلة' : 'Active & Connected'}
+                            </span>
+                          </h4>
+                          <p className="text-[11px] text-slate-500 dark:text-slate-400">
+                            {language === 'ar' 
+                              ? 'حفظ الملازم والمواد سحابياً لتظهر فورياً لجميع الطلاب عبر كافة الأجهزة والمتصفحات' 
+                              : 'Cloud-synced lectures and materials visible to all students across devices'}
+                          </p>
+                        </div>
+                      </div>
+                      <span className="px-2.5 py-1 rounded-full bg-emerald-100 dark:bg-emerald-950/60 text-emerald-700 dark:text-emerald-300 font-bold text-[11px] flex items-center gap-1.5 shrink-0">
+                        <CheckCircle2 className="w-3.5 h-3.5 text-emerald-600 dark:text-emerald-400" />
+                        <span>{language === 'ar' ? 'تزامن لحظي' : 'Real-time Sync'}</span>
+                      </span>
+                    </div>
+
+                    <div className="space-y-2 text-xs text-slate-600 dark:text-slate-300">
+                      <div className="flex items-center justify-between p-3 rounded-xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800">
+                        <div className="flex items-center gap-2">
+                          <Cloud className="w-4 h-4 text-amber-500" />
+                          <span className="font-bold">{language === 'ar' ? 'المشروع السحابي النشط:' : 'Active Cloud Project:'}</span>
+                        </div>
+                        <code className="font-mono text-amber-600 dark:text-amber-400 font-bold bg-amber-50 dark:bg-amber-950/50 px-2 py-0.5 rounded">
+                          {customFirebaseJson ? 'مشروع مخصص (Custom / m-mhv)' : 'gen-lang-client-0594796586'}
+                        </code>
+                      </div>
+
+                      <div className="flex items-center justify-between p-3 rounded-xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800">
+                        <div className="flex items-center gap-2">
+                          <Server className="w-4 h-4 text-emerald-500" />
+                          <span className="font-bold">{language === 'ar' ? 'المجموعات السحابية (Collections):' : 'Cloud Collections:'}</span>
+                        </div>
+                        <span className="font-mono text-[11px] text-slate-700 dark:text-slate-300 font-bold">
+                          lectures, summaries, exams, schedule
+                        </span>
+                      </div>
+                    </div>
+
+                    <div className="flex flex-wrap gap-2 pt-1">
+                      <button
+                        type="button"
+                        onClick={() => setShowFirebaseConfigPanel(prev => !prev)}
+                        className="px-3.5 py-2 rounded-xl bg-amber-600 hover:bg-amber-700 text-white text-xs font-bold flex items-center gap-1.5 transition-colors cursor-pointer"
+                      >
+                        <Database className="w-3.5 h-3.5" />
+                        <span>
+                          {showFirebaseConfigPanel
+                            ? (language === 'ar' ? 'إخفاء خيارات مشروع m-mhv' : 'Hide m-mhv Options')
+                            : (language === 'ar' ? 'إعدادات وربط مشروعي الخاص (m-mhv)' : 'Configure My Project (m-mhv)')}
+                        </span>
+                      </button>
+
+                      {customFirebaseJson && (
+                        <button
+                          type="button"
+                          onClick={() => {
+                            localStorage.removeItem('saytara_firebase_custom_config');
+                            setCustomFirebaseJson('');
+                            setFirebaseConfigMsg(language === 'ar' ? 'تمت استعادة الإعداد السحابي التلقائي بنجاح! سيتم تحديث الصفحة.' : 'Reset to default cloud config.');
+                            setTimeout(() => window.location.reload(), 1200);
+                          }}
+                          className="px-3.5 py-2 rounded-xl border border-red-300 dark:border-red-700 bg-red-50 dark:bg-red-950/40 text-red-700 dark:text-red-300 text-xs font-bold flex items-center gap-1.5 hover:bg-red-100 transition-colors cursor-pointer"
+                        >
+                          <RefreshCw className="w-3.5 h-3.5" />
+                          <span>{language === 'ar' ? 'استعادة الإعداد السحابي التلقائي' : 'Reset to Default Cloud'}</span>
+                        </button>
+                      )}
+                    </div>
+
+                    {firebaseConfigMsg && (
+                      <div className="p-3 rounded-xl bg-emerald-50 dark:bg-emerald-950/50 border border-emerald-200 dark:border-emerald-800 text-emerald-800 dark:text-emerald-200 text-xs">
+                        {firebaseConfigMsg}
+                      </div>
+                    )}
+
+                    {/* Expandable Firebase Config Panel */}
+                    {showFirebaseConfigPanel && (
+                      <div className="p-4 rounded-xl bg-white dark:bg-slate-900 border border-amber-200 dark:border-amber-800/60 space-y-3 mt-2 animate-fadeIn text-xs">
+                        <div className="font-bold text-slate-800 dark:text-white flex items-center gap-1.5">
+                          <Sparkles className="w-4 h-4 text-amber-500" />
+                          <span>{language === 'ar' ? 'الربط المباشر مع مشروعك في Firebase (مشروع m-mhv):' : 'Direct Link to your Firebase project (m-mhv):'}</span>
+                        </div>
+                        
+                        <div className="bg-slate-50 dark:bg-slate-800/70 p-3 rounded-lg text-slate-600 dark:text-slate-300 space-y-1.5 leading-relaxed text-[11px]">
+                          <p className="font-bold text-slate-700 dark:text-slate-200">
+                            {language === 'ar' ? 'الخطوات والإعدادات المطلوبة منك في لوحة تحكم Firebase Console:' : 'Required steps in Firebase Console:'}
+                          </p>
+                          <ol className="list-decimal list-inside space-y-1">
+                            <li>
+                              {language === 'ar' 
+                                ? 'ادخل إلى console.firebase.google.com وافتح مشروعك m-mhv.'
+                                : 'Go to console.firebase.google.com and open project m-mhv.'}
+                            </li>
+                            <li>
+                              {language === 'ar' 
+                                ? 'من إعدادات المشروع (Project Settings ⚙️) اختر إضافة تطبيق ويب (Web App </>).'
+                                : 'In Project Settings, add a Web App.'}
+                            </li>
+                            <li>
+                              {language === 'ar' 
+                                ? 'انسخ كائن firebaseConfig (يحتوي apiKey, projectId, appId, authDomain).'
+                                : 'Copy the firebaseConfig object and paste it below.'}
+                            </li>
+                            <li>
+                              {language === 'ar' 
+                                ? 'تأكد من تفعيل Cloud Firestore في مشروعك وتعيين قواعد الأمان (Firestore Rules).'
+                                : 'Ensure Cloud Firestore is enabled with security rules in your project.'}
+                            </li>
+                          </ol>
+                        </div>
+
+                        <div className="space-y-1">
+                          <label className="font-bold text-slate-700 dark:text-slate-300">
+                            {language === 'ar' ? 'ألصق كود إعدادات Firebase Config بصيغة JSON:' : 'Paste Firebase Config JSON:'}
+                          </label>
+                          <textarea
+                            value={customFirebaseJson}
+                            onChange={(e) => setCustomFirebaseJson(e.target.value)}
+                            placeholder='{\n  "apiKey": "...",\n  "authDomain": "m-mhv.firebaseapp.com",\n  "projectId": "m-mhv",\n  "storageBucket": "m-mhv.appspot.com",\n  "messagingSenderId": "...",\n  "appId": "..."\n}'
+                            rows={6}
+                            className="w-full p-2.5 rounded-lg border border-slate-300 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 font-mono text-[11px] text-slate-800 dark:text-slate-200 focus:outline-none focus:ring-2 focus:ring-amber-500"
+                          />
+                        </div>
+
+                        <div className="flex gap-2">
+                          <button
+                            type="button"
+                            onClick={() => {
+                              try {
+                                if (!customFirebaseJson.trim()) {
+                                  setFirebaseConfigMsg(language === 'ar' ? 'يرجى إدخال إعدادات JSON صحيحة' : 'Please provide JSON');
+                                  return;
+                                }
+                                const parsed = JSON.parse(customFirebaseJson);
+                                if (!parsed.projectId) {
+                                  setFirebaseConfigMsg(language === 'ar' ? 'يجب أن يحتوي الـ JSON على projectId' : 'Missing projectId');
+                                  return;
+                                }
+                                localStorage.setItem('saytara_firebase_custom_config', JSON.stringify(parsed, null, 2));
+                                setFirebaseConfigMsg(language === 'ar' ? 'تم حفظ إعدادات مشروعي بنجاح! جاري إعادة التحميل والتوصيل...' : 'Saved successfully! Reloading...');
+                                setTimeout(() => window.location.reload(), 1200);
+                              } catch (err: any) {
+                                setFirebaseConfigMsg(language === 'ar' ? `خطأ في صيغة الـ JSON: ${err?.message}` : 'Invalid JSON');
+                              }
+                            }}
+                            className="px-4 py-2 rounded-xl bg-amber-600 hover:bg-amber-700 text-white font-bold text-xs transition-colors cursor-pointer"
+                          >
+                            {language === 'ar' ? 'حفظ وتفعيل مشروعي (m-mhv)' : 'Save & Activate'}
+                          </button>
+                        </div>
+                      </div>
+                    )}
                   </div>
 
                   {/* Card 2: GitHub Repository Synchronization */}

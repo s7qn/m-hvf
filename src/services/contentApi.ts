@@ -1,4 +1,15 @@
 import { Lecture, Summary, ExamQuestionPaper, ScheduleItem } from '../types';
+import { 
+  saveLectureToFirestore, 
+  deleteLectureFromFirestore,
+  saveSummaryToFirestore,
+  deleteSummaryFromFirestore,
+  saveExamToFirestore,
+  deleteExamFromFirestore,
+  saveScheduleItemToFirestore,
+  deleteScheduleItemFromFirestore,
+  fetchAllFirestoreContent
+} from './firestoreSync';
 
 export interface SharedContentResponse {
   success: boolean;
@@ -8,13 +19,34 @@ export interface SharedContentResponse {
   schedule: ScheduleItem[] | null;
   deletedLectureIds?: string[];
   lastUpdated?: string;
+  source?: 'firestore' | 'server';
 }
 
 /**
- * Fetch all shared content from the backend server so that
- * any lecture or material added by admin is visible to all students immediately.
+ * Fetch all shared content from Firestore first, falling back to backend server.
+ * This guarantees cloud persistence for all students across devices.
  */
 export async function fetchSharedContent(): Promise<SharedContentResponse | null> {
+  // 1. Try Firestore direct cloud database first
+  try {
+    const firestoreData = await fetchAllFirestoreContent();
+    if (firestoreData && (firestoreData.lectures.length > 0 || firestoreData.summaries.length > 0 || firestoreData.exams.length > 0)) {
+      return {
+        success: true,
+        lectures: firestoreData.lectures,
+        summaries: firestoreData.summaries,
+        exams: firestoreData.exams,
+        schedule: firestoreData.schedule.length > 0 ? firestoreData.schedule : null,
+        deletedLectureIds: [],
+        lastUpdated: new Date().toISOString(),
+        source: 'firestore',
+      };
+    }
+  } catch (firestoreErr) {
+    console.warn('[ContentAPI] Firestore direct fetch note (falling back to server):', firestoreErr);
+  }
+
+  // 2. Fallback / supplementary check with server
   try {
     const res = await fetch('/api/content', {
       headers: { 'Cache-Control': 'no-cache' }
@@ -30,6 +62,7 @@ export async function fetchSharedContent(): Promise<SharedContentResponse | null
         schedule: Array.isArray(data.schedule) ? data.schedule : null,
         deletedLectureIds: Array.isArray(data.deletedLectureIds) ? data.deletedLectureIds : [],
         lastUpdated: data.lastUpdated,
+        source: 'server',
       };
     }
   } catch (err) {
@@ -62,9 +95,18 @@ export async function getSyncInfo(): Promise<{
 }
 
 /**
- * Save a new or updated lecture to the server so it appears for all students
+ * Save a new or updated lecture to both Firestore and the server
+ * so it appears for all students across all devices and browsers immediately.
  */
 export async function saveSharedLecture(lecture: Lecture): Promise<boolean> {
+  let firestoreSuccess = false;
+  try {
+    firestoreSuccess = await saveLectureToFirestore(lecture);
+  } catch (fsErr) {
+    console.warn('[ContentAPI] Firestore save error:', fsErr);
+  }
+
+  let serverSuccess = false;
   try {
     const res = await fetch('/api/content/lectures', {
       method: 'POST',
@@ -72,17 +114,24 @@ export async function saveSharedLecture(lecture: Lecture): Promise<boolean> {
       body: JSON.stringify({ lecture }),
     });
     const data = await res.json();
-    return Boolean(data && data.success);
+    serverSuccess = Boolean(data && data.success);
   } catch (err) {
-    console.error('[ContentAPI] Failed to save shared lecture:', err);
-    return false;
+    console.error('[ContentAPI] Failed to save shared lecture to server:', err);
   }
+
+  return firestoreSuccess || serverSuccess;
 }
 
 /**
- * Delete a lecture from the server
+ * Delete a lecture from Firestore and server
  */
 export async function deleteSharedLecture(lectureId: string): Promise<boolean> {
+  try {
+    await deleteLectureFromFirestore(lectureId);
+  } catch (fsErr) {
+    console.warn('[ContentAPI] Firestore delete lecture error:', fsErr);
+  }
+
   try {
     const res = await fetch(`/api/content/lectures/${encodeURIComponent(lectureId)}`, {
       method: 'DELETE',
@@ -90,15 +139,21 @@ export async function deleteSharedLecture(lectureId: string): Promise<boolean> {
     const data = await res.json();
     return Boolean(data && data.success);
   } catch (err) {
-    console.error('[ContentAPI] Failed to delete shared lecture:', err);
+    console.error('[ContentAPI] Failed to delete shared lecture from server:', err);
     return false;
   }
 }
 
 /**
- * Save a summary to the server
+ * Save a summary to Firestore and server
  */
 export async function saveSharedSummary(summary: Summary): Promise<boolean> {
+  try {
+    await saveSummaryToFirestore(summary);
+  } catch (fsErr) {
+    console.warn('[ContentAPI] Firestore save summary error:', fsErr);
+  }
+
   try {
     const res = await fetch('/api/content/summaries', {
       method: 'POST',
@@ -114,9 +169,15 @@ export async function saveSharedSummary(summary: Summary): Promise<boolean> {
 }
 
 /**
- * Delete a summary from the server
+ * Delete a summary from Firestore and server
  */
 export async function deleteSharedSummary(summaryId: string): Promise<boolean> {
+  try {
+    await deleteSummaryFromFirestore(summaryId);
+  } catch (fsErr) {
+    console.warn('[ContentAPI] Firestore delete summary error:', fsErr);
+  }
+
   try {
     const res = await fetch(`/api/content/summaries/${encodeURIComponent(summaryId)}`, {
       method: 'DELETE',
@@ -130,9 +191,15 @@ export async function deleteSharedSummary(summaryId: string): Promise<boolean> {
 }
 
 /**
- * Save an exam to the server
+ * Save an exam to Firestore and server
  */
 export async function saveSharedExam(exam: ExamQuestionPaper): Promise<boolean> {
+  try {
+    await saveExamToFirestore(exam);
+  } catch (fsErr) {
+    console.warn('[ContentAPI] Firestore save exam error:', fsErr);
+  }
+
   try {
     const res = await fetch('/api/content/exams', {
       method: 'POST',
@@ -148,9 +215,15 @@ export async function saveSharedExam(exam: ExamQuestionPaper): Promise<boolean> 
 }
 
 /**
- * Delete an exam from the server
+ * Delete an exam from Firestore and server
  */
 export async function deleteSharedExam(examId: string): Promise<boolean> {
+  try {
+    await deleteExamFromFirestore(examId);
+  } catch (fsErr) {
+    console.warn('[ContentAPI] Firestore delete exam error:', fsErr);
+  }
+
   try {
     const res = await fetch(`/api/content/exams/${encodeURIComponent(examId)}`, {
       method: 'DELETE',
@@ -164,9 +237,15 @@ export async function deleteSharedExam(examId: string): Promise<boolean> {
 }
 
 /**
- * Save a schedule item to the server
+ * Save a schedule item to Firestore and server
  */
 export async function saveSharedScheduleItem(scheduleItem: ScheduleItem): Promise<boolean> {
+  try {
+    await saveScheduleItemToFirestore(scheduleItem);
+  } catch (fsErr) {
+    console.warn('[ContentAPI] Firestore save schedule error:', fsErr);
+  }
+
   try {
     const res = await fetch('/api/content/schedule', {
       method: 'POST',
@@ -182,9 +261,15 @@ export async function saveSharedScheduleItem(scheduleItem: ScheduleItem): Promis
 }
 
 /**
- * Delete a schedule item from the server
+ * Delete a schedule item from Firestore and server
  */
 export async function deleteSharedScheduleItem(itemId: string): Promise<boolean> {
+  try {
+    await deleteScheduleItemFromFirestore(itemId);
+  } catch (fsErr) {
+    console.warn('[ContentAPI] Firestore delete schedule error:', fsErr);
+  }
+
   try {
     const res = await fetch(`/api/content/schedule/${encodeURIComponent(itemId)}`, {
       method: 'DELETE',

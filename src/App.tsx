@@ -37,6 +37,12 @@ import {
   deleteSharedScheduleItem, 
   resetSharedSchedule 
 } from './services/contentApi';
+import { 
+  initFirestoreConnection, 
+  subscribeToFirestoreLectures, 
+  subscribeToFirestoreSummaries, 
+  subscribeToFirestoreExams 
+} from './services/firestoreSync';
 
 export default function App() {
   // Automatic Device Detection Hook
@@ -103,15 +109,6 @@ export default function App() {
   // Active navigation tab
   const [activeTab, setActiveTab] = useState<'lectures' | 'summaries' | 'exams' | 'schedule' | 'quizzes' | 'dashboard'>('lectures');
   
-  // Helper to remove any Baath party materials as requested by the user
-  const isBaathMaterial = (item: any) => {
-    if (!item) return false;
-    if (item.subjectId === 'baath-crimes') return true;
-    const titleAr = String(item.titleAr || '');
-    const titleEn = String(item.titleEn || '');
-    return titleAr.includes('البعث') || titleEn.toLowerCase().includes('baath');
-  };
-
   // Academic Stage Filter
   const [selectedStage, setSelectedStage] = useState<Stage | 'all'>('all');
 
@@ -125,9 +122,19 @@ export default function App() {
         if (Array.isArray(parsed)) {
           const cleaned = parsed.filter((l: Lecture) => 
             !l.id?.startsWith('lec-ct-') && 
-            !isBaathMaterial(l) && 
             !deleted.includes(l.id)
-          );
+          ).map((l: Lecture) => {
+            const base = INITIAL_LECTURES.find(initL => initL.id === l.id);
+            if (base) {
+              return {
+                ...base,
+                ...l,
+                chapters: l.chapters || base.chapters,
+                fullCurriculumTextAr: l.fullCurriculumTextAr || base.fullCurriculumTextAr,
+              };
+            }
+            return l;
+          });
           localStorage.setItem('saytara_lectures', JSON.stringify(cleaned));
           return cleaned;
         }
@@ -135,7 +142,7 @@ export default function App() {
     } catch {
       // fallback
     }
-    return INITIAL_LECTURES.filter(l => !isBaathMaterial(l));
+    return INITIAL_LECTURES;
   });
 
   // Dynamic Summaries with LocalStorage Persistence
@@ -145,14 +152,13 @@ export default function App() {
       if (saved) {
         const parsed = JSON.parse(saved);
         if (Array.isArray(parsed)) {
-          const cleaned = parsed.filter((s: Summary) => !isBaathMaterial(s));
-          return cleaned;
+          return parsed;
         }
       }
     } catch {
       // fallback
     }
-    return INITIAL_SUMMARIES.filter(s => !isBaathMaterial(s));
+    return INITIAL_SUMMARIES;
   });
 
   // Dynamic Exams with LocalStorage Persistence
@@ -306,22 +312,29 @@ export default function App() {
           const allDeleted = new Set([...serverDeleted, ...localDeleted]);
 
           const map = new Map<string, Lecture>();
-          // Base official lectures (excluding any deleted or baath lectures)
+          // Base official lectures (excluding any deleted lectures)
           INITIAL_LECTURES.forEach(l => {
-            if (!allDeleted.has(l.id) && !isBaathMaterial(l)) {
+            if (!allDeleted.has(l.id)) {
               map.set(l.id, l);
             }
           });
 
           // Server authoritative lectures (persisted for all students)
           data.lectures.forEach(l => {
-            if (!allDeleted.has(l.id) && !isBaathMaterial(l)) {
-              map.set(l.id, l);
+            if (!allDeleted.has(l.id)) {
+              const base = INITIAL_LECTURES.find(initL => initL.id === l.id);
+              const merged: Lecture = {
+                ...(base || {}),
+                ...l,
+                chapters: l.chapters || base?.chapters,
+                fullCurriculumTextAr: l.fullCurriculumTextAr || base?.fullCurriculumTextAr,
+              };
+              map.set(l.id, merged);
             }
           });
 
-          // Previous local custom items (if not deleted and not baath)
-          prev.filter(l => l.isCustom && !allDeleted.has(l.id) && !isBaathMaterial(l)).forEach(l => {
+          // Previous local custom items (if not deleted)
+          prev.filter(l => l.isCustom && !allDeleted.has(l.id)).forEach(l => {
             if (!map.has(l.id)) {
               map.set(l.id, l);
             }
@@ -341,9 +354,9 @@ export default function App() {
       if (Array.isArray(data.summaries)) {
         setSummaries(prev => {
           const map = new Map<string, Summary>();
-          INITIAL_SUMMARIES.filter(s => !isBaathMaterial(s)).forEach(s => map.set(s.id, s));
-          prev.filter(s => !isBaathMaterial(s)).forEach(s => map.set(s.id, s));
-          data.summaries.filter(s => !isBaathMaterial(s)).forEach(s => map.set(s.id, s));
+          INITIAL_SUMMARIES.forEach(s => map.set(s.id, s));
+          prev.forEach(s => map.set(s.id, s));
+          data.summaries.forEach(s => map.set(s.id, s));
           const finalSummaries = Array.from(map.values());
           localStorage.setItem('saytara_summaries', JSON.stringify(finalSummaries));
           return finalSummaries;
@@ -354,9 +367,9 @@ export default function App() {
       if (Array.isArray(data.exams)) {
         setExams(prev => {
           const map = new Map<string, ExamQuestionPaper>();
-          INITIAL_EXAMS.filter(e => !isBaathMaterial(e)).forEach(e => map.set(e.id, e));
-          prev.filter(e => !isBaathMaterial(e)).forEach(e => map.set(e.id, e));
-          data.exams.filter(e => !isBaathMaterial(e)).forEach(e => map.set(e.id, e));
+          INITIAL_EXAMS.forEach(e => map.set(e.id, e));
+          prev.forEach(e => map.set(e.id, e));
+          data.exams.forEach(e => map.set(e.id, e));
           const finalExams = Array.from(map.values());
           localStorage.setItem('saytara_exams', JSON.stringify(finalExams));
           return finalExams;
@@ -374,8 +387,68 @@ export default function App() {
   };
 
   useEffect(() => {
+    // Test initial connection to Firestore
+    initFirestoreConnection().catch(() => {});
+
     // Initial fetch on mount
     syncContentFromServer();
+
+    // Subscribe to Firestore real-time updates for lectures
+    let unsubLectures: (() => void) | null = null;
+    let unsubSummaries: (() => void) | null = null;
+    let unsubExams: (() => void) | null = null;
+
+    try {
+      unsubLectures = subscribeToFirestoreLectures((fsLectures) => {
+        if (Array.isArray(fsLectures) && fsLectures.length > 0) {
+          setLectures(prev => {
+            const map = new Map<string, Lecture>();
+            INITIAL_LECTURES.forEach(l => map.set(l.id, l));
+            prev.filter(l => l.isCustom).forEach(l => map.set(l.id, l));
+            fsLectures.forEach(l => {
+              const base = INITIAL_LECTURES.find(initL => initL.id === l.id);
+              map.set(l.id, { ...(base || {}), ...l });
+            });
+            const combined = Array.from(map.values());
+            const custom = combined.filter(l => l.isCustom);
+            const standard = combined.filter(l => !l.isCustom);
+            const finalLectures = [...custom, ...standard];
+            localStorage.setItem('saytara_lectures', JSON.stringify(finalLectures));
+            return finalLectures;
+          });
+        }
+      });
+
+      unsubSummaries = subscribeToFirestoreSummaries((fsSummaries) => {
+        if (Array.isArray(fsSummaries) && fsSummaries.length > 0) {
+          setSummaries(prev => {
+            const map = new Map<string, Summary>();
+            INITIAL_SUMMARIES.forEach(s => map.set(s.id, s));
+            prev.forEach(s => map.set(s.id, s));
+            fsSummaries.forEach(s => map.set(s.id, s));
+            const finalSummaries = Array.from(map.values());
+            localStorage.setItem('saytara_summaries', JSON.stringify(finalSummaries));
+            return finalSummaries;
+          });
+        }
+      });
+
+      unsubExams = subscribeToFirestoreExams((fsExams) => {
+        if (Array.isArray(fsExams) && fsExams.length > 0) {
+          setExams(prev => {
+            const map = new Map<string, ExamQuestionPaper>();
+            INITIAL_EXAMS.forEach(e => map.set(e.id, e));
+            prev.forEach(e => map.set(e.id, e));
+            fsExams.forEach(e => map.set(e.id, e));
+            const finalExams = Array.from(map.values());
+            localStorage.setItem('saytara_exams', JSON.stringify(finalExams));
+            return finalExams;
+          });
+        }
+      });
+    } catch (subErr) {
+      console.warn('[Sync] Firestore real-time listener note:', subErr);
+    }
 
     // Periodic synchronization every 15 seconds to fetch lectures added by other users/admin
     const interval = setInterval(syncContentFromServer, 15000);
@@ -387,6 +460,9 @@ export default function App() {
     window.addEventListener('focus', handleFocus);
 
     return () => {
+      if (unsubLectures) unsubLectures();
+      if (unsubSummaries) unsubSummaries();
+      if (unsubExams) unsubExams();
       clearInterval(interval);
       window.removeEventListener('focus', handleFocus);
     };
@@ -396,8 +472,6 @@ export default function App() {
   // CONTENT MANAGEMENT HANDLERS (Admin Only - Shared With All Students)
   // --------------------------------------------------------------------------
   const handleAddLecture = (newLecture: Lecture) => {
-    if (isBaathMaterial(newLecture)) return;
-
     setLectures(prev => {
       const updated = [newLecture, ...prev.filter(l => l.id !== newLecture.id)];
       localStorage.setItem('saytara_lectures', JSON.stringify(updated));
@@ -592,6 +666,7 @@ export default function App() {
               onStartQuiz={(lec) => setActiveQuizLecture(lec)}
               onOpenAddCustomLecture={(subId) => handleOpenAdminTab('lectures', subId)}
               onDeleteLecture={handleDeleteLecture}
+              onUpdateLecture={handleAddLecture}
               readLectureIds={readLectureIds}
               onToggleReadLecture={handleToggleReadLecture}
               quizAttempts={quizAttempts}
@@ -724,6 +799,7 @@ export default function App() {
             isRead={readLectureIds.includes(viewingLecture.id)}
             onToggleRead={() => handleToggleReadLecture(viewingLecture.id)}
             onClose={() => setViewingLecture(null)}
+            onUpdateLecture={handleAddLecture}
             onStartQuiz={(lec) => {
               setViewingLecture(null);
               setActiveQuizLecture(lec);

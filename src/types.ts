@@ -40,6 +40,25 @@ export interface Quiz {
   questions: QuizQuestion[];
 }
 
+export interface LectureSection {
+  id: string;
+  titleAr: string;
+  titleEn: string;
+  contentAr: string;
+  contentEn?: string;
+  keyTakeawaysAr?: string[];
+  legalArticles?: string[];
+}
+
+export interface LectureChapter {
+  id: string;
+  chapterNumber: number;
+  titleAr: string;
+  titleEn: string;
+  descriptionAr?: string;
+  sections: LectureSection[];
+}
+
 export interface Lecture {
   id: string;
   subjectId: string;
@@ -50,6 +69,7 @@ export interface Lecture {
   descriptionAr: string;
   descriptionEn: string;
   fileUrl?: string;
+  fileName?: string;
   fileType: 'pdf' | 'slides' | 'notes';
   fileSize: string;
   uploadDate: string;
@@ -60,6 +80,8 @@ export interface Lecture {
   keyFormulas?: string[];
   quiz: Quiz;
   isCustom?: boolean;
+  fullCurriculumTextAr?: string;
+  chapters?: LectureChapter[];
 }
 
 export interface Summary {

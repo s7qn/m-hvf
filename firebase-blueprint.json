@@ -1,0 +1,83 @@
+{
+  "entities": {
+    "lecture": {
+      "title": "Lecture",
+      "description": "An academic lecture material, book, or curriculum file",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "subjectId": { "type": "string" },
+        "stage": { "type": "string" },
+        "titleAr": { "type": "string" },
+        "titleEn": { "type": "string" },
+        "descriptionAr": { "type": "string" },
+        "descriptionEn": { "type": "string" },
+        "fileUrl": { "type": "string" },
+        "fileType": { "type": "string" },
+        "fileSize": { "type": "string" },
+        "fullCurriculumTextAr": { "type": "string" },
+        "createdAt": { "type": "string" }
+      },
+      "required": ["id", "subjectId", "titleAr"]
+    },
+    "summary": {
+      "title": "Summary",
+      "description": "A study summary or revision note",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "subjectId": { "type": "string" },
+        "stage": { "type": "string" },
+        "titleAr": { "type": "string" },
+        "contentAr": { "type": "string" },
+        "createdAt": { "type": "string" }
+      },
+      "required": ["id", "subjectId", "titleAr"]
+    },
+    "exam": {
+      "title": "ExamQuestionPaper",
+      "description": "Previous ministerial and university exam question papers",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "subjectId": { "type": "string" },
+        "stage": { "type": "string" },
+        "titleAr": { "type": "string" },
+        "year": { "type": "string" },
+        "createdAt": { "type": "string" }
+      },
+      "required": ["id", "subjectId", "titleAr"]
+    },
+    "scheduleItem": {
+      "title": "ScheduleItem",
+      "description": "An academic weekly schedule entry",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "day": { "type": "string" },
+        "time": { "type": "string" },
+        "subject": { "type": "string" },
+        "room": { "type": "string" }
+      },
+      "required": ["id", "day", "subject"]
+    }
+  },
+  "firestore": {
+    "/lectures/{lectureId}": {
+      "schema": { "$ref": "#/entities/lecture" },
+      "description": "Collection of shared educational lectures"
+    },
+    "/summaries/{summaryId}": {
+      "schema": { "$ref": "#/entities/summary" },
+      "description": "Collection of shared summaries"
+    },
+    "/exams/{examId}": {
+      "schema": { "$ref": "#/entities/exam" },
+      "description": "Collection of shared past exams"
+    },
+    "/schedule/{itemId}": {
+      "schema": { "$ref": "#/entities/scheduleItem" },
+      "description": "Collection of academic timetable slots"
+    }
+  }
+}

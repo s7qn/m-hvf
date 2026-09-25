@@ -1,0 +1,42 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    // Default deny catch-all
+    match /{document=**} {
+      allow read, write: if false;
+    }
+
+    function isValidId(id) {
+      return id is string && id.size() <= 128 && id.matches('^[a-zA-Z0-9_\\-]+$');
+    }
+
+    // Educational Lectures & Materials
+    match /lectures/{lectureId} {
+      allow read: if true;
+      allow write: if isValidId(lectureId);
+    }
+
+    // Summaries
+    match /summaries/{summaryId} {
+      allow read: if true;
+      allow write: if isValidId(summaryId);
+    }
+
+    // Past Exams
+    match /exams/{examId} {
+      allow read: if true;
+      allow write: if isValidId(examId);
+    }
+
+    // Weekly Schedule
+    match /schedule/{itemId} {
+      allow read: if true;
+      allow write: if isValidId(itemId);
+    }
+
+    // Health / Connection Test
+    match /test/{testId} {
+      allow read, write: if true;
+    }
+  }
+}

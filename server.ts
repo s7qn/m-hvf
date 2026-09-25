@@ -47,18 +47,6 @@ async function startServer() {
   }
 
   // Helper to remove any Baath party materials as explicitly requested by the user
-  function filterOutBaath(list: any[]): any[] {
-    if (!Array.isArray(list)) return [];
-    return list.filter(item => {
-      if (!item) return false;
-      if (item.subjectId === 'baath-crimes') return false;
-      const titleAr = String(item.titleAr || '');
-      const titleEn = String(item.titleEn || '');
-      if (titleAr.includes('البعث') || titleEn.toLowerCase().includes('baath')) return false;
-      return true;
-    });
-  }
-
   function getSharedStore(): SharedStore {
     try {
       let raw: string | null = null;
@@ -71,13 +59,13 @@ async function startServer() {
       if (raw) {
         const parsed = JSON.parse(raw);
         const deletedLectureIds = Array.isArray(parsed.deletedLectureIds) ? parsed.deletedLectureIds : [];
-        const filteredLectures = filterOutBaath(Array.isArray(parsed.lectures) ? parsed.lectures : [])
+        const validLectures = (Array.isArray(parsed.lectures) ? parsed.lectures : [])
           .filter(l => l && l.id && !deletedLectureIds.includes(l.id));
 
         return {
-          lectures: filteredLectures,
-          summaries: filterOutBaath(Array.isArray(parsed.summaries) ? parsed.summaries : []),
-          exams: filterOutBaath(Array.isArray(parsed.exams) ? parsed.exams : []),
+          lectures: validLectures,
+          summaries: Array.isArray(parsed.summaries) ? parsed.summaries : [],
+          exams: Array.isArray(parsed.exams) ? parsed.exams : [],
           schedule: Array.isArray(parsed.schedule) ? parsed.schedule : null,
           deletedLectureIds,
           lastUpdated: parsed.lastUpdated || new Date().toISOString(),
@@ -100,9 +88,9 @@ async function startServer() {
     try {
       data.lastUpdated = new Date().toISOString();
       const deletedLectureIds = Array.isArray(data.deletedLectureIds) ? data.deletedLectureIds : [];
-      data.lectures = filterOutBaath(data.lectures).filter(l => l && l.id && !deletedLectureIds.includes(l.id));
-      data.summaries = filterOutBaath(data.summaries);
-      data.exams = filterOutBaath(data.exams);
+      data.lectures = (Array.isArray(data.lectures) ? data.lectures : []).filter(l => l && l.id && !deletedLectureIds.includes(l.id));
+      data.summaries = Array.isArray(data.summaries) ? data.summaries : [];
+      data.exams = Array.isArray(data.exams) ? data.exams : [];
       data.deletedLectureIds = deletedLectureIds;
 
       const payload = JSON.stringify(data, null, 2);
@@ -179,15 +167,6 @@ async function startServer() {
       const { lecture } = req.body || {};
       if (!lecture || !lecture.id) {
         return res.status(400).json({ success: false, error: 'Invalid lecture data' });
-      }
-
-      // Check if this is a Baath crimes lecture requested to be excluded
-      if (
-        lecture.subjectId === 'baath-crimes' || 
-        (lecture.titleAr && lecture.titleAr.includes('البعث')) ||
-        (lecture.titleEn && lecture.titleEn.toLowerCase().includes('baath'))
-      ) {
-        return res.json({ success: true, count: 0, excluded: true });
       }
 
       const store = getSharedStore();

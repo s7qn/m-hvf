@@ -20,10 +20,12 @@ import {
   CheckSquare,
   Square,
   Check,
-  X
+  X,
+  UploadCloud
 } from 'lucide-react';
 import { Lecture, Subject, Stage, Language, QuizAttempt } from '../types';
 import { TRANSLATIONS } from '../data/translations';
+import { uploadSharedFile } from '../services/contentApi';
 
 interface LecturesViewProps {
   lectures: Lecture[];
@@ -34,6 +36,7 @@ interface LecturesViewProps {
   onStartQuiz: (lecture: Lecture) => void;
   onOpenAddCustomLecture?: (subjectId?: string) => void;
   onDeleteLecture?: (lectureId: string) => void;
+  onUpdateLecture?: (updated: Lecture) => void;
   readLectureIds?: string[];
   onToggleReadLecture?: (lectureId: string) => void;
   quizAttempts?: Record<string, QuizAttempt>;
@@ -50,6 +53,7 @@ export const LecturesView: React.FC<LecturesViewProps> = ({
   onStartQuiz,
   onOpenAddCustomLecture,
   onDeleteLecture,
+  onUpdateLecture,
   readLectureIds = [],
   onToggleReadLecture,
   quizAttempts = {},
@@ -60,6 +64,32 @@ export const LecturesView: React.FC<LecturesViewProps> = ({
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedSubjectFilter, setSelectedSubjectFilter] = useState<string>('all');
   const [deletingLectureId, setDeletingLectureId] = useState<string | null>(null);
+  const [uploadingLecId, setUploadingLecId] = useState<string | null>(null);
+
+  const handleDirectUploadForLecture = async (lecture: Lecture, e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    try {
+      setUploadingLecId(lecture.id);
+      const res = await uploadSharedFile(file);
+      if (res && res.fileUrl) {
+        const updated: Lecture = {
+          ...lecture,
+          fileUrl: res.fileUrl,
+          fileName: file.name,
+          fileSize: res.fileSize,
+          uploadDate: new Date().toISOString().split('T')[0],
+        };
+        onUpdateLecture?.(updated);
+        alert(language === 'ar' ? `تم رفع ملفك الأصلي (${file.name}) بنجاح كما هو تماماً لجميع الطلاب!` : 'Uploaded original file successfully!');
+      }
+    } catch {
+      alert(language === 'ar' ? 'تعذر رفع الملف' : 'Upload failed');
+    } finally {
+      setUploadingLecId(null);
+      e.target.value = '';
+    }
+  };
 
   // Filter subjects by stage
   const visibleSubjects = subjects.filter(s => selectedStage === 'all' || s.stage === selectedStage);
@@ -420,6 +450,12 @@ export const LecturesView: React.FC<LecturesViewProps> = ({
                           <span>{language === 'ar' ? 'ملزمة مخصصة' : 'Custom Note'}</span>
                         </span>
                       )}
+                      {lecture.chapters && lecture.chapters.length > 0 && (
+                        <span className="px-2.5 py-1 rounded-lg bg-emerald-100 dark:bg-emerald-950/60 text-emerald-900 dark:text-emerald-300 border border-emerald-200 dark:border-emerald-800/80 text-[11px] font-black flex items-center gap-1">
+                          <BookOpen className="w-3 h-3 text-emerald-600 dark:text-emerald-400" />
+                          <span>{language === 'ar' ? 'الملزمة كاملة (4 فصول مفصلة)' : 'Full Complete Text'}</span>
+                        </span>
+                      )}
                       {/* Reading Status Pill */}
                       {isRead ? (
                         <span className="px-2 py-0.5 rounded-lg bg-emerald-50 dark:bg-emerald-950/50 text-emerald-700 dark:text-emerald-300 border border-emerald-200 dark:border-emerald-800 text-[11px] font-bold flex items-center gap-1">
@@ -491,11 +527,11 @@ export const LecturesView: React.FC<LecturesViewProps> = ({
                     <button
                       id={`btn-view-lec-${lecture.id}`}
                       onClick={() => onSelectLectureToView(lecture)}
-                      className="px-3.5 py-2 rounded-xl bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-750 text-slate-700 dark:text-slate-200 text-xs font-bold flex items-center gap-1.5 transition-colors cursor-pointer"
-                      title={t.viewLecture}
+                      className="px-3.5 py-2 rounded-xl bg-blue-50 dark:bg-blue-950/50 hover:bg-blue-100 dark:hover:bg-blue-900 text-blue-700 dark:text-blue-300 border border-blue-200 dark:border-blue-800 text-xs font-black flex items-center gap-1.5 transition-colors cursor-pointer"
+                      title={lecture.chapters && lecture.chapters.length > 0 ? (language === 'ar' ? 'قراءة نص الملزمة كاملة' : 'Read Full Booklet') : t.viewLecture}
                     >
-                      <Eye className="w-3.5 h-3.5 text-blue-600 dark:text-blue-400" />
-                      <span>{t.viewLecture}</span>
+                      <BookOpen className="w-3.5 h-3.5 text-blue-600 dark:text-blue-400" />
+                      <span>{lecture.chapters && lecture.chapters.length > 0 ? (language === 'ar' ? 'قراءة الملزمة كاملة' : 'Read Full Text') : t.viewLecture}</span>
                     </button>
 
                     {onToggleReadLecture && (
@@ -544,6 +580,30 @@ export const LecturesView: React.FC<LecturesViewProps> = ({
                     >
                       <Download className="w-4 h-4" />
                     </button>
+
+                    {/* Direct Upload / Replace with Original PDF Button */}
+                    <label
+                      htmlFor={`input-direct-file-${lecture.id}`}
+                      className="p-2 rounded-xl border border-amber-300 dark:border-amber-700 bg-amber-50 dark:bg-amber-950/40 hover:bg-amber-100 text-amber-800 dark:text-amber-200 text-xs font-bold transition-colors cursor-pointer flex items-center gap-1.5"
+                      title={language === 'ar' ? 'رفع نسختك الأصلية من ملف الـ PDF كما هي دون تعديل' : 'Upload original PDF file'}
+                    >
+                      <UploadCloud className="w-3.5 h-3.5 text-amber-600" />
+                      <span className="hidden sm:inline">
+                        {uploadingLecId === lecture.id
+                          ? (language === 'ar' ? 'جارٍ الرفع...' : 'Uploading...')
+                          : (lecture.fileUrl 
+                              ? (language === 'ar' ? 'استبدال PDF' : 'Replace PDF') 
+                              : (language === 'ar' ? 'رفع PDF الأصلي' : 'Upload PDF'))}
+                      </span>
+                      <input
+                        id={`input-direct-file-${lecture.id}`}
+                        type="file"
+                        accept=".pdf,.doc,.docx,.txt"
+                        className="hidden"
+                        onChange={(e) => handleDirectUploadForLecture(lecture, e)}
+                        disabled={uploadingLecId === lecture.id}
+                      />
+                    </label>
 
                     {(lecture.isCustom || isAdminUnlocked) && onDeleteLecture && (
                       deletingLectureId === lecture.id ? (
