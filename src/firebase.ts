@@ -3,25 +3,17 @@ import { getAuth } from 'firebase/auth';
 import { getFirestore, doc, getDocFromServer } from 'firebase/firestore';
 import defaultConfig from '../firebase-applet-config.json';
 
-// Allow custom config override (e.g., if user connects their m-mhv project)
-export function getActiveFirebaseConfig() {
+// Authoritative Firebase applet configuration
+// Both browsers and all devices must strictly connect to the same cloud project
+if (typeof window !== 'undefined') {
   try {
-    if (typeof window !== 'undefined') {
-      const custom = localStorage.getItem('saytara_firebase_custom_config');
-      if (custom) {
-        const parsed = JSON.parse(custom);
-        if (parsed && parsed.projectId) {
-          return parsed;
-        }
-      }
-    }
+    localStorage.removeItem('saytara_firebase_custom_config');
   } catch {
-    // fallback to default
+    // ignore
   }
-  return defaultConfig;
 }
 
-const firebaseConfig = getActiveFirebaseConfig();
+const firebaseConfig = defaultConfig;
 
 // Authoritative active Firebase application
 export const app = !getApps().length ? initializeApp(firebaseConfig) : getApp();

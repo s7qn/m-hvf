@@ -500,7 +500,7 @@ export const LecturesView: React.FC<LecturesViewProps> = ({
                     <span className="font-bold text-blue-950 dark:text-blue-200 block text-[11px]">
                       {t.keyPoints}
                     </span>
-                    {(language === 'ar' ? lecture.summaryPointsAr : lecture.summaryPointsEn).slice(0, 2).map((point, idx) => (
+                    {((language === 'ar' ? lecture.summaryPointsAr : lecture.summaryPointsEn) || lecture.summaryPointsAr || lecture.summaryPointsEn || []).slice(0, 2).map((point, idx) => (
                       <div key={idx} className="flex items-start gap-1.5 text-slate-600 dark:text-slate-300">
                         <span className="w-1 h-1 rounded-full bg-blue-500 mt-2 shrink-0" />
                         <span className="line-clamp-1">{point}</span>

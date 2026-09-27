@@ -535,6 +535,10 @@ export const AdminAddModal: React.FC<AdminAddModalProps> = ({
   // 1. Submit Lecture
   const handleSubmitLecture = (e: React.FormEvent) => {
     e.preventDefault();
+    if (isUploadingFile) {
+      setFormError(language === 'ar' ? 'يرجى الانتظار بضع ثوانٍ حتى يكتمل رفع ملف الملزمة' : 'Please wait for file upload to complete');
+      return;
+    }
     if (!lecTitleAr.trim()) {
       setFormError(language === 'ar' ? 'يرجى إدخال عنوان المحاضرة بالعربية' : 'Please enter Arabic title');
       return;
@@ -598,9 +602,18 @@ export const AdminAddModal: React.FC<AdminAddModalProps> = ({
     onAddLecture(newLecture);
     triggerSuccess(
       language === 'ar' 
-        ? 'تمت إضافة المحاضرة ونشرها لجميع الطلاب بنجاح!' 
+        ? 'تمت إضافة المحاضرة ونشرها سحابياً لجميع الطلاب بنجاح!' 
         : 'Lecture published to all students successfully!'
     );
+
+    // Reset fields for next addition
+    setLecTitleAr('');
+    setLecTitleEn('');
+    setLecDescAr('');
+    setLecDescEn('');
+    setLecUploadedFileName('');
+    setLecFileUrl('');
+    setFormError('');
   };
 
   // 2. Submit Summary
@@ -1344,10 +1357,20 @@ export const AdminAddModal: React.FC<AdminAddModalProps> = ({
                     </button>
                     <button
                       type="submit"
-                      className="px-6 py-2.5 rounded-xl bg-blue-600 hover:bg-blue-700 text-white text-xs font-black shadow-md shadow-blue-500/20 transition-all flex items-center gap-2 cursor-pointer"
+                      disabled={isUploadingFile}
+                      className="px-6 py-2.5 rounded-xl bg-blue-600 hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed text-white text-xs font-black shadow-md shadow-blue-500/20 transition-all flex items-center gap-2 cursor-pointer"
                     >
-                      <Plus className="w-4 h-4" />
-                      <span>{language === 'ar' ? 'حفظ ونشر الملزمة مع الاختبار الذكي' : 'Save Lecture & Quiz'}</span>
+                      {isUploadingFile ? (
+                        <>
+                          <RefreshCw className="w-4 h-4 animate-spin" />
+                          <span>{language === 'ar' ? 'جارٍ رفع الملف للسيرفر المشترك...' : 'Uploading file...'}</span>
+                        </>
+                      ) : (
+                        <>
+                          <Plus className="w-4 h-4" />
+                          <span>{language === 'ar' ? 'حفظ ونشر الملزمة مع الاختبار الذكي' : 'Save Lecture & Quiz'}</span>
+                        </>
+                      )}
                     </button>
                   </div>
                 </form>

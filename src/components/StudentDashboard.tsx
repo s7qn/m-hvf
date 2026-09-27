@@ -190,15 +190,18 @@ export const StudentDashboard: React.FC<StudentDashboardProps> = ({
 
   // Chart Data: Quiz history
   const quizScoresChartData = useMemo(() => {
-    return attemptsList.map((att, idx) => ({
-      name: language === 'ar' ? (att.quizTitleAr.length > 15 ? att.quizTitleAr.slice(0, 15) + '...' : att.quizTitleAr) : (att.quizTitleEn.length > 15 ? att.quizTitleEn.slice(0, 15) + '...' : att.quizTitleEn),
-      fullName: language === 'ar' ? att.quizTitleAr : att.quizTitleEn,
-      subject: language === 'ar' ? att.subjectNameAr : att.subjectNameEn,
-      score: att.percentage,
-      passed: att.passed,
-      date: att.date,
-      index: idx + 1,
-    }));
+    return attemptsList.map((att, idx) => {
+      const title = (language === 'ar' ? (att.quizTitleAr || att.quizTitleEn) : (att.quizTitleEn || att.quizTitleAr)) || `اختبار ${idx + 1}`;
+      return {
+        name: title.length > 15 ? title.slice(0, 15) + '...' : title,
+        fullName: title,
+        subject: (language === 'ar' ? att.subjectNameAr : att.subjectNameEn) || att.subjectNameAr || att.subjectNameEn || '',
+        score: att.percentage,
+        passed: att.passed,
+        date: att.date,
+        index: idx + 1,
+      };
+    });
   }, [attemptsList, language]);
 
   // Chart Data: Reading Pie
@@ -305,7 +308,7 @@ export const StudentDashboard: React.FC<StudentDashboardProps> = ({
           <div className="flex flex-col md:flex-row md:items-center justify-between gap-6 pt-2">
             <div className="flex items-center gap-4">
               <div className="w-16 h-16 sm:w-20 sm:h-20 rounded-2xl bg-gradient-to-tr from-blue-600 to-cyan-500 text-white flex items-center justify-center font-black text-2xl shadow-lg border-2 border-white/30 shrink-0">
-                {profile.name ? profile.name.slice(0, 1) : 'ط'}
+                {profile?.name ? profile.name.slice(0, 1) : 'ط'}
               </div>
               <div className="space-y-1">
                 <div className="flex items-center gap-2.5 flex-wrap">

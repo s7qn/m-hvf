@@ -54,8 +54,8 @@ export const SecureQuizModal: React.FC<SecureQuizModalProps> = ({
 
   // Synchronized active questions based on student's choice (5 to 10 questions)
   const activeQuestions = useMemo(() => {
-    const base = quiz.questions;
-    if (!base || base.length === 0) return [];
+    const base = quiz?.questions;
+    if (!base || !Array.isArray(base) || base.length === 0) return [];
     if (base.length >= selectedQuestionCount) {
       return base.slice(0, selectedQuestionCount);
     }

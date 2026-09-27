@@ -41,7 +41,8 @@ import {
   initFirestoreConnection, 
   subscribeToFirestoreLectures, 
   subscribeToFirestoreSummaries, 
-  subscribeToFirestoreExams 
+  subscribeToFirestoreExams,
+  subscribeToFirestoreSchedule
 } from './services/firestoreSync';
 
 export default function App() {
@@ -375,6 +376,7 @@ export default function App() {
     let unsubLectures: (() => void) | null = null;
     let unsubSummaries: (() => void) | null = null;
     let unsubExams: (() => void) | null = null;
+    let unsubSchedule: (() => void) | null = null;
 
     try {
       unsubLectures = subscribeToFirestoreLectures((fsLectures) => {
@@ -427,6 +429,13 @@ export default function App() {
           return finalExams;
         });
       });
+
+      unsubSchedule = subscribeToFirestoreSchedule((fsSchedule) => {
+        if (Array.isArray(fsSchedule) && fsSchedule.length > 0) {
+          setSchedule(fsSchedule);
+          localStorage.setItem('saytara_schedule', JSON.stringify(fsSchedule));
+        }
+      });
     } catch (subErr) {
       console.warn('[Sync] Firestore real-time listener note:', subErr);
     }
@@ -444,6 +453,7 @@ export default function App() {
       if (unsubLectures) unsubLectures();
       if (unsubSummaries) unsubSummaries();
       if (unsubExams) unsubExams();
+      if (unsubSchedule) unsubSchedule();
       clearInterval(interval);
       window.removeEventListener('focus', handleFocus);
     };
