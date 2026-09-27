@@ -4,9 +4,11 @@ import {
   setDoc, 
   deleteDoc, 
   getDocs, 
+  getDocFromServer,
   onSnapshot 
 } from 'firebase/firestore';
 import { db, handleFirestoreError, OperationType, testConnection } from '../firebase';
+import firebaseConfig from '../../firebase-applet-config.json';
 import { Lecture, Summary, ExamQuestionPaper, ScheduleItem, QuizAttempt } from '../types';
 
 export interface FirestoreContentState {
@@ -16,11 +18,96 @@ export interface FirestoreContentState {
   schedule: ScheduleItem[];
 }
 
+export interface FirestoreDiagnosticResult {
+  success: boolean;
+  databaseId: string;
+  projectId: string;
+  documentPath: string;
+  writeSuccess: boolean;
+  readSuccess: boolean;
+  latencyMs: number;
+  matchedPayload: boolean;
+  error?: string;
+  timestamp: string;
+}
+
+/**
+ * Diagnostic test function that performs a manual write-then-read cycle with a test document
+ * to verify that the firestoreDatabaseId specified in firebase-applet-config.json is correctly
+ * resolving and accessible across different sessions and devices.
+ */
+export async function runFirestoreDiagnosticTest(): Promise<FirestoreDiagnosticResult> {
+  const startTime = Date.now();
+  const testDocId = `diag-${Date.now()}-${Math.random().toString(36).substring(2, 7)}`;
+  const path = 'test';
+  const testRef = doc(db, path, testDocId);
+
+  const expectedPayload = {
+    diagnosticId: testDocId,
+    databaseId: firebaseConfig.firestoreDatabaseId || '(default)',
+    projectId: firebaseConfig.projectId,
+    sessionTimestamp: new Date().toISOString(),
+    probeMessage: 'Manual write-then-read verification probe across sessions',
+  };
+
+  const result: FirestoreDiagnosticResult = {
+    success: false,
+    databaseId: firebaseConfig.firestoreDatabaseId || '(default)',
+    projectId: firebaseConfig.projectId,
+    documentPath: `${path}/${testDocId}`,
+    writeSuccess: false,
+    readSuccess: false,
+    latencyMs: 0,
+    matchedPayload: false,
+    timestamp: new Date().toISOString(),
+  };
+
+  try {
+    // 1. Manual Write Cycle with safety timeout
+    const writePromise = setDoc(testRef, expectedPayload);
+    const writeTimeout = new Promise((_, reject) =>
+      setTimeout(() => reject(new Error('Write cycle timeout (7s)')), 7000)
+    );
+    await Promise.race([writePromise, writeTimeout]);
+    result.writeSuccess = true;
+
+    // 2. Manual Read Cycle directly from server to verify round-trip persistence
+    const readPromise = getDocFromServer(testRef);
+    const readTimeout = new Promise<never>((_, reject) =>
+      setTimeout(() => reject(new Error('Read cycle timeout (7s)')), 7000)
+    );
+    const docSnap = await Promise.race([readPromise, readTimeout]);
+
+    if (docSnap.exists()) {
+      result.readSuccess = true;
+      const data = docSnap.data();
+      result.matchedPayload = data?.diagnosticId === testDocId && data?.databaseId === result.databaseId;
+      result.success = result.writeSuccess && result.readSuccess && result.matchedPayload;
+    } else {
+      result.error = 'Test document does not exist after write operation.';
+    }
+
+    // 3. Clean up the test document
+    deleteDoc(testRef).catch(() => {});
+  } catch (err: any) {
+    result.error = err?.message || String(err);
+    console.error(`[Firestore Diagnostic] Failed:`, err);
+  } finally {
+    result.latencyMs = Date.now() - startTime;
+  }
+
+  console.log(`[Firestore Diagnostic] Result:`, JSON.stringify(result, null, 2));
+  return result;
+}
+
 /**
  * Test initial Firestore connection on app startup
  */
 export async function initFirestoreConnection() {
-  return await testConnection();
+  const isConnected = await testConnection();
+  // Perform diagnostic test in background to verify databaseId resolution
+  runFirestoreDiagnosticTest().catch(() => {});
+  return isConnected;
 }
 
 /**
