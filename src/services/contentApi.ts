@@ -1,4 +1,6 @@
 import { Lecture, Summary, ExamQuestionPaper, ScheduleItem } from '../types';
+import { getStorage, ref as storageRef, uploadBytes, getDownloadURL } from 'firebase/storage';
+import { app } from '../firebase';
 import { 
   saveLectureToFirestore, 
   deleteLectureFromFirestore,
@@ -274,10 +276,34 @@ export async function resetSharedSchedule(): Promise<boolean> {
 }
 
 /**
- * Upload a lecture file (PDF, DOCX, TXT) to the server
- * so that any student on any browser or device can view and download the real file.
+ * Upload a lecture file (PDF, DOCX, TXT)
+ * Generates an absolute Firebase Storage download URL or absolute server cloud URL
+ * Never returns local blob: or file system paths, ensuring all students can access the file.
  */
 export async function uploadSharedFile(file: File): Promise<{ fileUrl: string; fileSize: string; fileName: string } | null> {
+  const sizeMB = `${(file.size / (1024 * 1024)).toFixed(1)} MB`;
+  const sanitizedName = file.name.replace(/[^a-zA-Z0-9.\-_]/g, '_');
+
+  // 1. Try Firebase Storage SDK first to produce an absolute Firebase Storage download URL
+  try {
+    const storage = getStorage(app);
+    const storagePath = `lectures/${Date.now()}-${sanitizedName}`;
+    const fileRef = storageRef(storage, storagePath);
+    await uploadBytes(fileRef, file, { contentType: file.type || 'application/pdf' });
+    const downloadUrl = await getDownloadURL(fileRef);
+    if (downloadUrl && downloadUrl.startsWith('http')) {
+      console.log(`[ContentAPI] File uploaded to Firebase Storage: ${downloadUrl}`);
+      return {
+        fileUrl: downloadUrl,
+        fileSize: sizeMB,
+        fileName: file.name,
+      };
+    }
+  } catch (storageErr) {
+    console.warn('[ContentAPI] Firebase Storage SDK upload note (routing to absolute server cloud storage):', storageErr);
+  }
+
+  // 2. Upload to server cloud storage and return absolute HTTP/HTTPS URL
   return new Promise((resolve) => {
     try {
       const reader = new FileReader();
@@ -296,9 +322,15 @@ export async function uploadSharedFile(file: File): Promise<{ fileUrl: string; f
           });
           const data = await res.json();
           if (data && data.success && data.fileUrl) {
+            // Guarantee an absolute URL (never relative path or blob:)
+            const baseUrl = typeof window !== 'undefined' ? window.location.origin : '';
+            const absoluteDownloadUrl = data.fileUrl.startsWith('http') 
+              ? data.fileUrl 
+              : `${baseUrl}${data.fileUrl}`;
+
             resolve({
-              fileUrl: data.fileUrl,
-              fileSize: data.fileSize || `${(file.size / (1024 * 1024)).toFixed(1)} MB`,
+              fileUrl: absoluteDownloadUrl,
+              fileSize: data.fileSize || sizeMB,
               fileName: data.fileName || file.name,
             });
             return;

@@ -45,6 +45,12 @@ service cloud.firestore {
       }
     }
 
+    // Student Quiz Attempts & Scores
+    match /quiz_attempts/{attemptId} {
+      allow read: if true;
+      allow write: if isValidId(attemptId);
+    }
+
     // Health / Connection Test
     match /test/{testId} {
       allow read, write: if true;

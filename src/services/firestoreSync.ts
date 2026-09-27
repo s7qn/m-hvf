@@ -7,7 +7,7 @@ import {
   onSnapshot 
 } from 'firebase/firestore';
 import { db, handleFirestoreError, OperationType, testConnection } from '../firebase';
-import { Lecture, Summary, ExamQuestionPaper, ScheduleItem } from '../types';
+import { Lecture, Summary, ExamQuestionPaper, ScheduleItem, QuizAttempt } from '../types';
 
 export interface FirestoreContentState {
   lectures: Lecture[];
@@ -349,4 +349,30 @@ export function subscribeToFirestoreSchedule(
       if (onError) onError(error);
     }
   );
+}
+
+/**
+ * Save Student Quiz Attempt to Firestore
+ */
+export async function saveQuizAttemptToFirestore(attempt: QuizAttempt): Promise<boolean> {
+  const path = 'quiz_attempts';
+  const docId = attempt.id || `attempt-${attempt.quizId}-${Date.now()}`;
+  try {
+    const attemptRef = doc(db, path, docId);
+    const sanitized = JSON.parse(JSON.stringify({
+      ...attempt,
+      id: docId,
+      timestamp: new Date().toISOString()
+    }));
+    const writePromise = setDoc(attemptRef, sanitized, { merge: true });
+    const timeoutPromise = new Promise((_, reject) => 
+      setTimeout(() => reject(new Error('Firestore write timeout')), 6000)
+    );
+    await Promise.race([writePromise, timeoutPromise]);
+    console.log(`[Firestore] Successfully saved quiz attempt: ${docId}`);
+    return true;
+  } catch (error: any) {
+    console.warn(`[Firestore] Save attempt note for ${docId}:`, error?.message || error);
+    return false;
+  }
 }

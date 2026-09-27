@@ -42,7 +42,8 @@ import {
   subscribeToFirestoreLectures, 
   subscribeToFirestoreSummaries, 
   subscribeToFirestoreExams,
-  subscribeToFirestoreSchedule
+  subscribeToFirestoreSchedule,
+  saveQuizAttemptToFirestore
 } from './services/firestoreSync';
 
 export default function App() {
@@ -550,7 +551,7 @@ export default function App() {
     setShowAdminModal(true);
   };
 
-  // Save student quiz attempt
+  // Save student quiz attempt (Local State, LocalStorage & Firestore sync)
   const handleSaveAttempt = (attempt: QuizAttempt) => {
     setQuizAttempts(prev => {
       const updated = {
@@ -561,6 +562,9 @@ export default function App() {
       return updated;
     });
     recordActivityToday(20);
+    saveQuizAttemptToFirestore(attempt).catch(err => {
+      console.warn('[QuizAttempt] Firestore sync note:', err);
+    });
   };
 
   const handleUnlockAdmin = () => {

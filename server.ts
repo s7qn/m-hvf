@@ -467,12 +467,15 @@ async function startServer() {
       fs.writeFileSync(filePath, buffer);
 
       const sizeMB = (buffer.length / (1024 * 1024)).toFixed(1);
-      const fileUrl = `/uploads/${safeName}`;
+      const protocol = req.headers['x-forwarded-proto'] || req.protocol || 'https';
+      const host = req.get('host');
+      const absoluteUrl = `${protocol}://${host}/uploads/${safeName}`;
 
-      console.log(`[Upload] File saved successfully: ${fileUrl} (${sizeMB} MB)`);
+      console.log(`[Upload] File saved successfully: ${absoluteUrl} (${sizeMB} MB)`);
       return res.json({
         success: true,
-        fileUrl,
+        fileUrl: absoluteUrl,
+        relativeUrl: `/uploads/${safeName}`,
         fileName: sanitizedName,
         fileSize: `${sizeMB} MB`,
       });
