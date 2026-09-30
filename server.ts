@@ -196,10 +196,31 @@ async function startServer() {
         });
       }
 
+      // Fetch deleted lectures from Firestore
+      const deletedSnap = await getDocs(collection(firestore, 'deleted_lectures')).catch(() => null);
+      const firestoreDeletedIds: string[] = [];
+      if (deletedSnap) {
+        deletedSnap.forEach(d => {
+          if (d.id) firestoreDeletedIds.push(d.id);
+        });
+      }
+      const combinedDeletedIds = Array.from(new Set([
+        ...(store.deletedLectureIds || []),
+        ...firestoreDeletedIds
+      ]));
+
       // Merge: Firestore is primary
       const lecturesMap = new Map();
-      store.lectures.forEach(l => lecturesMap.set(l.id, l));
-      firestoreLectures.forEach(l => lecturesMap.set(l.id, l));
+      store.lectures.forEach(l => {
+        if (l && l.id && !combinedDeletedIds.includes(l.id)) {
+          lecturesMap.set(l.id, l);
+        }
+      });
+      firestoreLectures.forEach(l => {
+        if (l && l.id && !combinedDeletedIds.includes(l.id)) {
+          lecturesMap.set(l.id, l);
+        }
+      });
 
       const summariesMap = new Map();
       store.summaries.forEach(s => summariesMap.set(s.id, s));
@@ -215,7 +236,7 @@ async function startServer() {
         summaries: Array.from(summariesMap.values()),
         exams: Array.from(examsMap.values()),
         schedule: firestoreSchedule.length > 0 ? firestoreSchedule : store.schedule,
-        deletedLectureIds: [],
+        deletedLectureIds: combinedDeletedIds,
         lastUpdated: new Date().toISOString(),
         source: 'firestore',
       });
@@ -227,7 +248,7 @@ async function startServer() {
         summaries: store.summaries,
         exams: store.exams,
         schedule: store.schedule,
-        deletedLectureIds: [],
+        deletedLectureIds: store.deletedLectureIds || [],
         lastUpdated: store.lastUpdated,
       });
     }
@@ -258,6 +279,10 @@ async function startServer() {
       // 2. Local fallback store
       const store = getSharedStore();
       store.lectures = [lecture, ...store.lectures.filter(l => l.id !== lecture.id)];
+      // Remove from deleted list if re-added
+      if (store.deletedLectureIds && store.deletedLectureIds.includes(lecture.id)) {
+        store.deletedLectureIds = store.deletedLectureIds.filter(id => id !== lecture.id);
+      }
       saveSharedStore(store);
 
       res.json({
@@ -275,19 +300,29 @@ async function startServer() {
   app.delete('/api/content/lectures/:id', async (req, res) => {
     try {
       const { id } = req.params;
-      // 1. Delete from Firestore
+      // 1. Delete from Firestore and record in deleted_lectures collection
       try {
         await deleteDoc(doc(firestore, 'lectures', id));
-        console.log(`[Server] Deleted lecture from Firestore: ${id}`);
+        await setDoc(doc(firestore, 'deleted_lectures', id), {
+          id,
+          deletedAt: new Date().toISOString()
+        }, { merge: true });
+        console.log(`[Server] Deleted lecture from Firestore & recorded in deleted_lectures: ${id}`);
       } catch (fsErr) {
         console.error('[Server] Firestore delete error:', fsErr);
       }
 
       const store = getSharedStore();
       store.lectures = store.lectures.filter(l => l.id !== id);
+      if (!Array.isArray(store.deletedLectureIds)) {
+        store.deletedLectureIds = [];
+      }
+      if (!store.deletedLectureIds.includes(id)) {
+        store.deletedLectureIds.push(id);
+      }
       saveSharedStore(store);
 
-      res.json({ success: true, deletedId: id });
+      res.json({ success: true, deletedId: id, deletedLectureIds: store.deletedLectureIds });
     } catch (err: any) {
       res.status(500).json({ success: false, error: err?.message || 'Failed to delete lecture' });
     }
@@ -482,6 +517,74 @@ async function startServer() {
     } catch (err: any) {
       console.error('Error in /api/upload:', err);
       return res.status(500).json({ success: false, error: err?.message || 'Upload failed' });
+    }
+  });
+
+  // 12. Universal Cloud File Stream Endpoint
+  // Streams files directly from Firestore lecture_files collection so that ANY device, browser, or external viewer can access the PDF
+  app.get('/api/files/:fileId', async (req, res) => {
+    try {
+      const { fileId } = req.params;
+      if (!fileId) return res.status(400).send('Missing fileId');
+
+      // 1. Check Firestore lecture_files collection
+      try {
+        const fileDocRef = doc(firestore, 'lecture_files', fileId);
+        const snap = await getDoc(fileDocRef);
+        if (snap.exists()) {
+          const fileData = snap.data();
+          let fullDataUrl = fileData.dataUrl || '';
+
+          // Reassemble chunks if chunked file
+          if (!fullDataUrl && fileData.totalChunks && fileData.totalChunks > 1) {
+            const chunkPromises = [];
+            for (let i = 0; i < fileData.totalChunks; i++) {
+              chunkPromises.push(getDoc(doc(firestore, 'lecture_files', fileId, 'chunks', `chunk_${i}`)));
+            }
+            const chunkSnaps = await Promise.all(chunkPromises);
+            const parts: string[] = [];
+            chunkSnaps.forEach(cs => {
+              if (cs.exists()) {
+                parts.push(cs.data()?.data || '');
+              }
+            });
+            fullDataUrl = parts.join('');
+          }
+
+          if (fullDataUrl) {
+            const parts = fullDataUrl.split(',');
+            const base64Str = parts.length > 1 ? parts[1] : parts[0];
+            const buffer = Buffer.from(base64Str, 'base64');
+            const mimeType = fileData.mimeType || 'application/pdf';
+            const fileName = fileData.fileName || 'document.pdf';
+
+            res.setHeader('Content-Type', mimeType);
+            res.setHeader('Content-Disposition', `inline; filename="${encodeURIComponent(fileName)}"`);
+            res.setHeader('Content-Length', buffer.length.toString());
+            res.setHeader('Cache-Control', 'public, max-age=86400');
+            return res.send(buffer);
+          }
+        }
+      } catch (fsErr) {
+        console.warn(`[Server] Firestore lookup note for /api/files/${fileId}:`, fsErr);
+      }
+
+      // 2. Check local uploads/ directory as fallback
+      if (fs.existsSync(UPLOADS_DIR)) {
+        const files = fs.readdirSync(UPLOADS_DIR);
+        const match = files.find(f => f.includes(fileId));
+        if (match) {
+          const filePath = path.join(UPLOADS_DIR, match);
+          res.setHeader('Content-Type', 'application/pdf');
+          res.setHeader('Content-Disposition', `inline; filename="${encodeURIComponent(match)}"`);
+          return fs.createReadStream(filePath).pipe(res);
+        }
+      }
+
+      return res.status(404).send('File not found');
+    } catch (err: any) {
+      console.error('Error serving cloud file:', err);
+      return res.status(500).send('Internal server error');
     }
   });
 

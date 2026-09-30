@@ -337,9 +337,7 @@ export const BAATH_CRIMES_LECTURE: Lecture = {
   }
 };
 
-export const INITIAL_LECTURES: Lecture[] = [
-  BAATH_CRIMES_LECTURE,
-];
+export const INITIAL_LECTURES: Lecture[] = [];
 
 export const INITIAL_SUMMARIES: Summary[] = [];
 

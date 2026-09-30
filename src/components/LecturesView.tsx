@@ -26,6 +26,7 @@ import {
 import { Lecture, Subject, Stage, Language, QuizAttempt } from '../types';
 import { TRANSLATIONS } from '../data/translations';
 import { uploadSharedFile } from '../services/contentApi';
+import { downloadCloudFile } from '../services/cloudFileStorage';
 
 interface LecturesViewProps {
   lectures: Lecture[];
@@ -36,7 +37,7 @@ interface LecturesViewProps {
   onStartQuiz: (lecture: Lecture) => void;
   onOpenAddCustomLecture?: (subjectId?: string) => void;
   onDeleteLecture?: (lectureId: string) => void;
-  onUpdateLecture?: (updated: Lecture) => void;
+  onUpdateLecture?: (updated: Lecture) => Promise<any> | void;
   readLectureIds?: string[];
   onToggleReadLecture?: (lectureId: string) => void;
   quizAttempts?: Record<string, QuizAttempt>;
@@ -556,14 +557,11 @@ export const LecturesView: React.FC<LecturesViewProps> = ({
 
                     <button
                       id={`btn-download-lec-${lecture.id}`}
-                      onClick={() => {
+                      onClick={async () => {
                         if (lecture.fileUrl) {
-                          const a = document.createElement('a');
-                          a.href = lecture.fileUrl;
-                          a.download = `${lecture.titleAr || 'Lecture'}.pdf`;
-                          a.target = '_blank';
-                          a.click();
-                          return;
+                          const fileName = lecture.fileName || `${lecture.titleAr || 'Lecture'}.pdf`;
+                          const ok = await downloadCloudFile(lecture.fileUrl, fileName);
+                          if (ok) return;
                         }
                         const blob = new Blob([
                           `منصة سيطرة | المحاضرة رقم ${lecture.lectureNumber}\n${lecture.titleAr}\nالأستاذ: ${lecture.instructorAr}\n\nصنع بواسطة مصطفى احمد وحسن علوان`
@@ -605,7 +603,7 @@ export const LecturesView: React.FC<LecturesViewProps> = ({
                       />
                     </label>
 
-                    {(lecture.isCustom || isAdminUnlocked) && onDeleteLecture && (
+                    {onDeleteLecture && (
                       deletingLectureId === lecture.id ? (
                         <div className="flex items-center gap-1 p-1 bg-red-50 dark:bg-red-950/80 border border-red-300 dark:border-red-800 rounded-xl shadow-xs animate-fadeIn">
                           <span className="text-[11px] font-bold text-red-700 dark:text-red-300 px-1 whitespace-nowrap">

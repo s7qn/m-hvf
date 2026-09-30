@@ -43,6 +43,7 @@ import {
   subscribeToFirestoreSummaries, 
   subscribeToFirestoreExams,
   subscribeToFirestoreSchedule,
+  subscribeToFirestoreDeletedLectures,
   saveQuizAttemptToFirestore
 } from './services/firestoreSync';
 
@@ -114,6 +115,20 @@ export default function App() {
   // Academic Stage Filter
   const [selectedStage, setSelectedStage] = useState<Stage | 'all'>('all');
 
+  // Deleted Lectures Tracking (Persistent across sessions and Firestore)
+  const [deletedLectureIds, setDeletedLectureIds] = useState<string[]>(() => {
+    try {
+      const saved = localStorage.getItem('saytara_deleted_lectures');
+      const list: string[] = saved ? JSON.parse(saved) : [];
+      if (!list.includes('lec-baath-curriculum-101')) {
+        list.push('lec-baath-curriculum-101');
+      }
+      return list;
+    } catch {
+      return ['lec-baath-curriculum-101'];
+    }
+  });
+
   // Dynamic Lectures with LocalStorage Persistence
   const [lectures, setLectures] = useState<Lecture[]>(() => {
     try {
@@ -141,6 +156,7 @@ export default function App() {
           return cleaned;
         }
       }
+      return INITIAL_LECTURES.filter(l => !deleted.includes(l.id));
     } catch {
       // fallback
     }
@@ -301,25 +317,31 @@ export default function App() {
       const data = await fetchSharedContent();
       if (!data) return;
 
+      const cloudDeleted = Array.isArray(data.deletedLectureIds) ? data.deletedLectureIds : [];
+      const localDeleted: string[] = JSON.parse(localStorage.getItem('saytara_deleted_lectures') || '[]');
+      const allDeleted = Array.from(new Set([...cloudDeleted, ...localDeleted]));
+      if (allDeleted.length > 0) {
+        setDeletedLectureIds(allDeleted);
+        localStorage.setItem('saytara_deleted_lectures', JSON.stringify(allDeleted));
+      }
+
       // 1. Sync Lectures: Combine default lectures with cloud-persisted shared lectures
       if (Array.isArray(data.lectures)) {
         setLectures(() => {
           const map = new Map<string, Lecture>();
-          // Base official lectures
-          INITIAL_LECTURES.forEach(l => map.set(l.id, l));
+          // Base official lectures (excluding deleted)
+          INITIAL_LECTURES.filter(l => !allDeleted.includes(l.id)).forEach(l => map.set(l.id, l));
           // Authoritative lectures from Firestore / shared cloud
-          data.lectures.forEach(l => {
-            if (l && l.id) {
-              const base = INITIAL_LECTURES.find(initL => initL.id === l.id);
-              map.set(l.id, {
-                ...(base || {}),
-                ...l,
-                isCustom: l.isCustom ?? !base,
-              });
-            }
+          data.lectures.filter(l => l && l.id && !allDeleted.includes(l.id)).forEach(l => {
+            const base = INITIAL_LECTURES.find(initL => initL.id === l.id);
+            map.set(l.id, {
+              ...(base || {}),
+              ...l,
+              isCustom: l.isCustom ?? !base,
+            });
           });
 
-          const combined = Array.from(map.values());
+          const combined = Array.from(map.values()).filter(l => !allDeleted.includes(l.id));
           const custom = combined.filter(l => l.isCustom);
           const standard = combined.filter(l => !l.isCustom);
           const finalLectures = [...custom, ...standard];
@@ -373,8 +395,9 @@ export default function App() {
     // Initial fetch on mount
     syncContentFromServer();
 
-    // Subscribe to Firestore real-time updates for lectures
+    // Subscribe to Firestore real-time updates for lectures & deleted items
     let unsubLectures: (() => void) | null = null;
+    let unsubDeleted: (() => void) | null = null;
     let unsubSummaries: (() => void) | null = null;
     let unsubExams: (() => void) | null = null;
     let unsubSchedule: (() => void) | null = null;
@@ -382,27 +405,42 @@ export default function App() {
     try {
       unsubLectures = subscribeToFirestoreLectures((fsLectures) => {
         setLectures(() => {
+          const activeDeleted: string[] = JSON.parse(localStorage.getItem('saytara_deleted_lectures') || '[]');
           const map = new Map<string, Lecture>();
-          // 1. Official baseline lectures
-          INITIAL_LECTURES.forEach(l => map.set(l.id, l));
-          // 2. Real-time Cloud lectures from Firestore
-          fsLectures.forEach(l => {
-            if (l && l.id) {
-              const base = INITIAL_LECTURES.find(initL => initL.id === l.id);
-              map.set(l.id, {
-                ...(base || {}),
-                ...l,
-                isCustom: l.isCustom ?? !base,
-              });
-            }
+          // 1. Official baseline lectures (excluding deleted)
+          INITIAL_LECTURES.filter(l => !activeDeleted.includes(l.id)).forEach(l => map.set(l.id, l));
+          // 2. Real-time Cloud lectures from Firestore (excluding deleted)
+          fsLectures.filter(l => l && l.id && !activeDeleted.includes(l.id)).forEach(l => {
+            const base = INITIAL_LECTURES.find(initL => initL.id === l.id);
+            map.set(l.id, {
+              ...(base || {}),
+              ...l,
+              isCustom: l.isCustom ?? !base,
+            });
           });
-          const combined = Array.from(map.values());
+          const combined = Array.from(map.values()).filter(l => !activeDeleted.includes(l.id));
           const custom = combined.filter(l => l.isCustom);
           const standard = combined.filter(l => !l.isCustom);
           const finalLectures = [...custom, ...standard];
           localStorage.setItem('saytara_lectures', JSON.stringify(finalLectures));
           return finalLectures;
         });
+      });
+
+      // Real-time listener for deleted lectures
+      unsubDeleted = subscribeToFirestoreDeletedLectures((remoteDeletedIds) => {
+        if (remoteDeletedIds && remoteDeletedIds.length > 0) {
+          setDeletedLectureIds(prev => {
+            const merged = Array.from(new Set([...prev, ...remoteDeletedIds]));
+            localStorage.setItem('saytara_deleted_lectures', JSON.stringify(merged));
+            return merged;
+          });
+          setLectures(prev => {
+            const filtered = prev.filter(l => !remoteDeletedIds.includes(l.id));
+            localStorage.setItem('saytara_lectures', JSON.stringify(filtered));
+            return filtered;
+          });
+        }
       });
 
       unsubSummaries = subscribeToFirestoreSummaries((fsSummaries) => {
@@ -463,26 +501,53 @@ export default function App() {
   // --------------------------------------------------------------------------
   // CONTENT MANAGEMENT HANDLERS (Admin Only - Shared With All Students via Firestore)
   // --------------------------------------------------------------------------
-  const handleAddLecture = (newLecture: Lecture) => {
+  const handleAddLecture = async (newLecture: Lecture): Promise<{ success: boolean; error?: string }> => {
+    // 1. MUST execute and confirm Firestore cloud write FIRST
+    const saveResult = await saveSharedLecture(newLecture);
+    
+    if (!saveResult.success) {
+      console.error('[AddLecture Error] Firestore write failed:', saveResult.error);
+      return {
+        success: false,
+        error: saveResult.error || (language === 'ar' ? 'فشل حفظ الملزمة في Firestore. لم يتم النشر.' : 'Failed to write to Firestore.')
+      };
+    }
+
+    // 2. Only after confirmed successful Firestore WRITE, update local React state and localStorage
     setLectures(prev => {
       const updated = [newLecture, ...prev.filter(l => l.id !== newLecture.id)];
       localStorage.setItem('saytara_lectures', JSON.stringify(updated));
       return updated;
     });
 
-    // Persist directly to Firebase Firestore Cloud Database for all users
-    saveSharedLecture(newLecture).catch(err => console.error('[AddLecture Error]', err));
+    return { success: true };
   };
 
-  const handleDeleteLecture = (lectureId: string) => {
+  const handleDeleteLecture = async (lectureId: string) => {
+    // 1. Immediately record in deletedLectureIds state and localStorage so it never resurrects!
+    setDeletedLectureIds(prev => {
+      const updated = Array.from(new Set([...prev, lectureId]));
+      localStorage.setItem('saytara_deleted_lectures', JSON.stringify(updated));
+      return updated;
+    });
+
+    // 2. Immediately remove from lectures state and localStorage
     setLectures(prev => {
       const updated = prev.filter(l => l.id !== lectureId);
       localStorage.setItem('saytara_lectures', JSON.stringify(updated));
       return updated;
     });
 
-    // Delete directly from Firebase Firestore Cloud Database
-    deleteSharedLecture(lectureId).catch(err => console.error('[DeleteLecture Error]', err));
+    // 3. Find attached fileUrl to clean up from cloud file storage
+    const targetLecture = lectures.find(l => l.id === lectureId);
+    const fileUrl = targetLecture?.fileUrl;
+
+    // 4. Delete directly from Firebase Firestore Cloud Database & server store
+    try {
+      await deleteSharedLecture(lectureId, fileUrl);
+    } catch (err) {
+      console.error('[DeleteLecture Error]', err);
+    }
   };
 
   const handleAddSummary = (newSummary: Summary) => {

@@ -45,7 +45,7 @@ interface AdminAddModalProps {
   isAdminUnlocked: boolean;
   onUnlockAdmin: () => void;
   onClose: () => void;
-  onAddLecture: (newLecture: Lecture) => void;
+  onAddLecture: (newLecture: Lecture) => Promise<{ success: boolean; error?: string }> | void;
   onAddSummary?: (newSummary: Summary) => void;
   onAddScheduleItem?: (newItem: ScheduleItem) => void;
   onAddExam?: (newExam: ExamQuestionPaper) => void;
@@ -125,6 +125,7 @@ export const AdminAddModal: React.FC<AdminAddModalProps> = ({
   const [lecUploadedFileName, setLecUploadedFileName] = useState('');
   const [lecUploadedFileSize, setLecUploadedFileSize] = useState('2.5 MB');
   const [isUploadingFile, setIsUploadingFile] = useState<boolean>(false);
+  const [isSavingLecture, setIsSavingLecture] = useState<boolean>(false);
   const [lecSummaryPointsText, setLecSummaryPointsText] = useState('');
   const [lecKeyFormulasText, setLecKeyFormulasText] = useState('');
   
@@ -533,7 +534,7 @@ export const AdminAddModal: React.FC<AdminAddModalProps> = ({
   // ----------------------------------------------------
 
   // 1. Submit Lecture
-  const handleSubmitLecture = (e: React.FormEvent) => {
+  const handleSubmitLecture = async (e: React.FormEvent) => {
     e.preventDefault();
     if (isUploadingFile) {
       setFormError(language === 'ar' ? 'يرجى الانتظار بضع ثوانٍ حتى يكتمل رفع ملف الملزمة' : 'Please wait for file upload to complete');
@@ -548,72 +549,88 @@ export const AdminAddModal: React.FC<AdminAddModalProps> = ({
       return;
     }
 
-    const lectureId = 'lec-' + Date.now();
-    const quizId = 'quiz-' + Date.now();
-
-    const formattedQuestions: QuizQuestion[] = quizQuestions.map((q, idx) => ({
-      id: q.id || `q-${quizId}-${idx}`,
-      questionAr: q.questionAr || (language === 'ar' ? `سؤال اختبار المحاضرة ${idx + 1}` : `Quiz Question ${idx + 1}`),
-      questionEn: q.questionEn || `Quiz Question ${idx + 1}`,
-      optionsAr: q.optionsAr.map(opt => opt.trim() || 'خيار هندسي'),
-      optionsEn: q.optionsEn.map(opt => opt.trim() || 'Engineering Option'),
-      correctIndex: q.correctIndex,
-      explanationAr: q.explanationAr || 'تفسير هندسي للإجابة النموذجية بناءً على مادة المحاضرة.',
-      explanationEn: q.explanationEn || 'Engineering derivation based on lecture material.',
-      codeOrFormula: q.codeOrFormula,
-    }));
-
-    const newQuiz: Quiz = {
-      id: quizId,
-      lectureId: lectureId,
-      subjectId: lecSubjectId,
-      titleAr: `اختبار: ${lecTitleAr}`,
-      titleEn: `Quiz: ${lecTitleEn || lecTitleAr}`,
-      durationMinutes: 10,
-      passingScore: 60,
-      questions: formattedQuestions,
-    };
-
-    const summaryListAr = lecSummaryPointsText.split('\n').map(s => s.trim()).filter(Boolean);
-    const formulasList = lecKeyFormulasText.split('\n').map(s => s.trim()).filter(Boolean);
-
-    const newLecture: Lecture = {
-      id: lectureId,
-      subjectId: lecSubjectId,
-      stage: lecStage,
-      lectureNumber: Number(lecNumber) || 1,
-      titleAr: lecTitleAr,
-      titleEn: lecTitleEn || lecTitleAr,
-      descriptionAr: lecDescAr || lecTitleAr,
-      descriptionEn: lecDescEn || lecTitleEn || lecTitleAr,
-      fileType: 'pdf',
-      fileSize: lecUploadedFileSize || '2.5 MB',
-      uploadDate: new Date().toISOString().split('T')[0],
-      instructorAr: lecInstructorAr || 'أستاذ المادة',
-      instructorEn: lecInstructorEn || 'Course Lecturer',
-      summaryPointsAr: summaryListAr.length > 0 ? summaryListAr : ['مفاهيم ومسائل هندسية في السيطرة والأتمتة'],
-      summaryPointsEn: ['Practical control engineering principles and mathematical derivations'],
-      keyFormulas: formulasList,
-      fileUrl: lecFileUrl || undefined,
-      quiz: newQuiz,
-      isCustom: true,
-    };
-
-    onAddLecture(newLecture);
-    triggerSuccess(
-      language === 'ar' 
-        ? 'تمت إضافة المحاضرة ونشرها سحابياً لجميع الطلاب بنجاح!' 
-        : 'Lecture published to all students successfully!'
-    );
-
-    // Reset fields for next addition
-    setLecTitleAr('');
-    setLecTitleEn('');
-    setLecDescAr('');
-    setLecDescEn('');
-    setLecUploadedFileName('');
-    setLecFileUrl('');
+    setIsSavingLecture(true);
     setFormError('');
+
+    try {
+      const lectureId = 'lec-' + Date.now();
+      const quizId = 'quiz-' + Date.now();
+
+      const formattedQuestions: QuizQuestion[] = quizQuestions.map((q, idx) => ({
+        id: q.id || `q-${quizId}-${idx}`,
+        questionAr: q.questionAr || (language === 'ar' ? `سؤال اختبار المحاضرة ${idx + 1}` : `Quiz Question ${idx + 1}`),
+        questionEn: q.questionEn || `Quiz Question ${idx + 1}`,
+        optionsAr: q.optionsAr.map(opt => opt.trim() || 'خيار هندسي'),
+        optionsEn: q.optionsEn.map(opt => opt.trim() || 'Engineering Option'),
+        correctIndex: q.correctIndex,
+        explanationAr: q.explanationAr || 'تفسير هندسي للإجابة النموذجية بناءً على مادة المحاضرة.',
+        explanationEn: q.explanationEn || 'Engineering derivation based on lecture material.',
+        codeOrFormula: q.codeOrFormula,
+      }));
+
+      const newQuiz: Quiz = {
+        id: quizId,
+        lectureId: lectureId,
+        subjectId: lecSubjectId,
+        titleAr: `اختبار: ${lecTitleAr}`,
+        titleEn: `Quiz: ${lecTitleEn || lecTitleAr}`,
+        durationMinutes: 10,
+        passingScore: 60,
+        questions: formattedQuestions,
+      };
+
+      const summaryListAr = lecSummaryPointsText.split('\n').map(s => s.trim()).filter(Boolean);
+      const formulasList = lecKeyFormulasText.split('\n').map(s => s.trim()).filter(Boolean);
+
+      const newLecture: Lecture = {
+        id: lectureId,
+        subjectId: lecSubjectId,
+        stage: lecStage,
+        lectureNumber: Number(lecNumber) || 1,
+        titleAr: lecTitleAr,
+        titleEn: lecTitleEn || lecTitleAr,
+        descriptionAr: lecDescAr || lecTitleAr,
+        descriptionEn: lecDescEn || lecTitleEn || lecTitleAr,
+        fileType: 'pdf',
+        fileSize: lecUploadedFileSize || '2.5 MB',
+        uploadDate: new Date().toISOString().split('T')[0],
+        instructorAr: lecInstructorAr || 'أستاذ المادة',
+        instructorEn: lecInstructorEn || 'Course Lecturer',
+        summaryPointsAr: summaryListAr.length > 0 ? summaryListAr : ['مفاهيم ومسائل هندسية في السيطرة والأتمتة'],
+        summaryPointsEn: ['Practical control engineering principles and mathematical derivations'],
+        keyFormulas: formulasList,
+        fileUrl: lecFileUrl || undefined,
+        quiz: newQuiz,
+        isCustom: true,
+      };
+
+      // CRITICAL: Await Firestore write confirmation from App layer!
+      const outcome = await onAddLecture(newLecture);
+      if (outcome && typeof outcome === 'object' && !outcome.success) {
+        setFormError(outcome.error || (language === 'ar' ? 'فشل الحفظ في Firestore. لم يتم نشر الملزمة.' : 'Failed to save to Firestore.'));
+        setIsSavingLecture(false);
+        return;
+      }
+
+      triggerSuccess(
+        language === 'ar' 
+          ? 'تم حفظ الملزمة ونشرها سحابياً في Firestore بنجاح!' 
+          : 'Lecture published to Firestore successfully!'
+      );
+
+      // Reset fields for next addition only after confirmed write!
+      setLecTitleAr('');
+      setLecTitleEn('');
+      setLecDescAr('');
+      setLecDescEn('');
+      setLecUploadedFileName('');
+      setLecFileUrl('');
+      setFormError('');
+    } catch (err: any) {
+      setFormError(err?.message || (language === 'ar' ? 'حدث خطأ أثناء الاتصال بقاعدة البيانات السحابية' : 'Error communicating with Firestore'));
+    } finally {
+      setIsSavingLecture(false);
+    }
   };
 
   // 2. Submit Summary
@@ -1357,10 +1374,15 @@ export const AdminAddModal: React.FC<AdminAddModalProps> = ({
                     </button>
                     <button
                       type="submit"
-                      disabled={isUploadingFile}
+                      disabled={isUploadingFile || isSavingLecture}
                       className="px-6 py-2.5 rounded-xl bg-blue-600 hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed text-white text-xs font-black shadow-md shadow-blue-500/20 transition-all flex items-center gap-2 cursor-pointer"
                     >
-                      {isUploadingFile ? (
+                      {isSavingLecture ? (
+                        <>
+                          <RefreshCw className="w-4 h-4 animate-spin" />
+                          <span>{language === 'ar' ? 'جارٍ الحفظ السحابي في Firestore...' : 'Saving to Firestore...'}</span>
+                        </>
+                      ) : isUploadingFile ? (
                         <>
                           <RefreshCw className="w-4 h-4 animate-spin" />
                           <span>{language === 'ar' ? 'جارٍ رفع الملف للسيرفر المشترك...' : 'Uploading file...'}</span>

@@ -1,6 +1,7 @@
 import { Lecture, Summary, ExamQuestionPaper, ScheduleItem } from '../types';
 import { getStorage, ref as storageRef, uploadBytes, getDownloadURL } from 'firebase/storage';
 import { app } from '../firebase';
+import { saveFileToCloudStorage, deleteCloudFile } from './cloudFileStorage';
 import { 
   saveLectureToFirestore, 
   deleteLectureFromFirestore,
@@ -85,13 +86,24 @@ export async function fetchSharedContent(): Promise<SharedContentResponse | null
       ? srvData.schedule
       : null;
 
+  // Collect deleted IDs from both sources
+  const deletedLectureIds = Array.from(new Set([
+    ...(fsData?.deletedLectureIds || []),
+    ...(srvData?.deletedLectureIds || [])
+  ]));
+
+  // Ensure deleted lectures are not in the active map
+  deletedLectureIds.forEach(id => {
+    lecturesMap.delete(id);
+  });
+
   return {
     success: true,
     lectures: Array.from(lecturesMap.values()),
     summaries: Array.from(summariesMap.values()),
     exams: Array.from(examsMap.values()),
     schedule,
-    deletedLectureIds: [],
+    deletedLectureIds,
     lastUpdated: new Date().toISOString(),
     source: fsData ? 'firestore' : 'server',
   };
@@ -121,40 +133,75 @@ export async function getSyncInfo(): Promise<{
 }
 
 /**
- * Save a new or updated lecture to both Firestore and the server concurrently
- * so it appears for all students across all devices and browsers immediately.
+ * Save a new or updated lecture to Firestore cloud database
+ * Guarantees that the document is committed to Firestore before reporting success.
  */
-export async function saveSharedLecture(lecture: Lecture): Promise<boolean> {
-  const [fsResult, srvResult] = await Promise.allSettled([
-    saveLectureToFirestore(lecture),
-    fetch('/api/content/lectures', {
+export async function saveSharedLecture(lecture: Lecture): Promise<{ success: boolean; error?: string }> {
+  // 1. Direct Firestore write via client SDK
+  const fsResult = await saveLectureToFirestore(lecture);
+
+  // 2. Mirror/backup to server (server also executes Firestore setDoc)
+  let srvSuccess = false;
+  try {
+    const baseUrl = typeof window !== 'undefined' ? window.location.origin : 'http://localhost:3000';
+    const srvRes = await fetch(`${baseUrl}/api/content/lectures`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ lecture }),
-    }).then(res => res.json()).then(d => Boolean(d && d.success)).catch(() => false)
-  ]);
+    });
+    const srvData = await srvRes.json();
+    srvSuccess = Boolean(srvData && srvData.success);
+  } catch (srvErr) {
+    console.warn('[ContentAPI] Server sync note:', srvErr);
+  }
 
-  const fsOk = fsResult.status === 'fulfilled' && fsResult.value === true;
-  const srvOk = srvResult.status === 'fulfilled' && srvResult.value === true;
+  if (fsResult.success || srvSuccess) {
+    console.log(`[ContentAPI] Lecture save confirmed in Firestore: "${lecture.titleAr}"`);
+    return { success: true };
+  }
 
-  console.log(`[ContentAPI] Lecture save sync outcome: Firestore=${fsOk}, Server=${srvOk}`);
-  return fsOk || srvOk;
+  return {
+    success: false,
+    error: fsResult.error || 'فشلت عملية الكتابة إلى قاعدة بيانات Firestore السحابية. يرجى التحقق من الاتصال وإعادة المحاولة.'
+  };
 }
 
 /**
  * Delete a lecture from Firestore and server concurrently
+ * Also cleans up any attached file in Firestore lecture_files collection
  */
-export async function deleteSharedLecture(lectureId: string): Promise<boolean> {
-  const [fsResult, srvResult] = await Promise.allSettled([
-    deleteLectureFromFirestore(lectureId),
-    fetch(`/api/content/lectures/${encodeURIComponent(lectureId)}`, {
-      method: 'DELETE',
-    }).then(res => res.json()).then(d => Boolean(d && d.success)).catch(() => false)
-  ]);
+export async function deleteSharedLecture(lectureId: string, fileUrl?: string): Promise<{ success: boolean; error?: string }> {
+  try {
+    // 1. Clean up attached cloud file if present
+    if (fileUrl) {
+      await deleteCloudFile(fileUrl).catch(() => {});
+    }
 
-  const fsOk = fsResult.status === 'fulfilled' && fsResult.value === true;
-  const srvOk = srvResult.status === 'fulfilled' && srvResult.value === true;
-  return fsOk || srvOk;
+    // 2. Delete from Firestore and record in deleted_lectures collection
+    const fsOk = await deleteLectureFromFirestore(lectureId);
+
+    // 3. Mirror deletion to server store
+    let srvOk = false;
+    try {
+      const baseUrl = typeof window !== 'undefined' ? window.location.origin : 'http://localhost:3000';
+      const srvRes = await fetch(`${baseUrl}/api/content/lectures/${encodeURIComponent(lectureId)}`, {
+        method: 'DELETE',
+      });
+      const srvData = await srvRes.json();
+      srvOk = Boolean(srvData && srvData.success);
+    } catch (srvErr) {
+      console.warn('[ContentAPI] Server delete note:', srvErr);
+    }
+
+    if (fsOk || srvOk) {
+      console.log(`[ContentAPI] Successfully deleted lecture: ${lectureId}`);
+      return { success: true };
+    }
+
+    return { success: false, error: 'فشل حذف الملزمة من قاعدة البيانات السحابية' };
+  } catch (err: any) {
+    return { success: false, error: err?.message || 'Failed to delete lecture' };
+  }
 }
 
 /**
@@ -277,33 +324,25 @@ export async function resetSharedSchedule(): Promise<boolean> {
 
 /**
  * Upload a lecture file (PDF, DOCX, TXT)
- * Generates an absolute Firebase Storage download URL or absolute server cloud URL
- * Never returns local blob: or file system paths, ensuring all students can access the file.
+ * Saves to Firestore lecture_files cloud database so it is 100% accessible across all browsers & devices.
+ * Also mirrors to backend server storage for dual redundancy.
+ * Never returns local blob: or temporary file system paths.
  */
 export async function uploadSharedFile(file: File): Promise<{ fileUrl: string; fileSize: string; fileName: string } | null> {
   const sizeMB = `${(file.size / (1024 * 1024)).toFixed(1)} MB`;
-  const sanitizedName = file.name.replace(/[^a-zA-Z0-9.\-_]/g, '_');
 
-  // 1. Try Firebase Storage SDK first to produce an absolute Firebase Storage download URL
+  // 1. Primary: Save to Firestore lecture_files collection for persistent cross-device access
   try {
-    const storage = getStorage(app);
-    const storagePath = `lectures/${Date.now()}-${sanitizedName}`;
-    const fileRef = storageRef(storage, storagePath);
-    await uploadBytes(fileRef, file, { contentType: file.type || 'application/pdf' });
-    const downloadUrl = await getDownloadURL(fileRef);
-    if (downloadUrl && downloadUrl.startsWith('http')) {
-      console.log(`[ContentAPI] File uploaded to Firebase Storage: ${downloadUrl}`);
-      return {
-        fileUrl: downloadUrl,
-        fileSize: sizeMB,
-        fileName: file.name,
-      };
+    const cloudRes = await saveFileToCloudStorage(file);
+    if (cloudRes && cloudRes.fileUrl) {
+      console.log(`[ContentAPI] File uploaded successfully to Cloud Storage in Firestore: ${cloudRes.fileUrl}`);
+      return cloudRes;
     }
-  } catch (storageErr) {
-    console.warn('[ContentAPI] Firebase Storage SDK upload note (routing to absolute server cloud storage):', storageErr);
+  } catch (err) {
+    console.warn('[ContentAPI] Firestore cloud storage attempt note (falling back to server):', err);
   }
 
-  // 2. Upload to server cloud storage and return absolute HTTP/HTTPS URL
+  // 2. Fallback: Upload to server uploads endpoint
   return new Promise((resolve) => {
     try {
       const reader = new FileReader();
@@ -311,25 +350,21 @@ export async function uploadSharedFile(file: File): Promise<{ fileUrl: string; f
         try {
           const resultStr = reader.result as string;
           const base64Data = resultStr.includes(',') ? resultStr.split(',')[1] : resultStr;
-          const res = await fetch('/api/upload', {
+          const baseUrl = typeof window !== 'undefined' ? window.location.origin : 'http://localhost:3000';
+          const res = await fetch(`${baseUrl}/api/upload`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({
               fileName: file.name,
               fileData: base64Data,
-              mimeType: file.type,
+              mimeType: file.type || 'application/pdf',
             }),
           });
           const data = await res.json();
-          if (data && data.success && data.fileUrl) {
-            // Guarantee an absolute URL (never relative path or blob:)
-            const baseUrl = typeof window !== 'undefined' ? window.location.origin : '';
-            const absoluteDownloadUrl = data.fileUrl.startsWith('http') 
-              ? data.fileUrl 
-              : `${baseUrl}${data.fileUrl}`;
-
+          if (data && data.success && (data.fileUrl || data.relativeUrl)) {
+            const finalUrl = data.relativeUrl || data.fileUrl;
             resolve({
-              fileUrl: absoluteDownloadUrl,
+              fileUrl: finalUrl,
               fileSize: data.fileSize || sizeMB,
               fileName: data.fileName || file.name,
             });

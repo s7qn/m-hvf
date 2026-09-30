@@ -59,24 +59,25 @@ export const LectureViewerModal: React.FC<LectureViewerModalProps> = ({
   const [resolvedBlobUrl, setResolvedBlobUrl] = useState<string | null>(null);
   const [isLoadingPdf, setIsLoadingPdf] = useState(false);
 
-  // Resolve cloud file if URL starts with cloud-file://
+  // Resolve cloud file for embedded PDF viewer (supports firestore-file://, /api/files/, cloud-file://, etc.)
   React.useEffect(() => {
     let active = true;
     if (currentLecture.fileUrl) {
-      if (currentLecture.fileUrl.startsWith('cloud-file://')) {
-        setIsLoadingPdf(true);
-        const fileId = currentLecture.fileUrl.replace('cloud-file://', '');
-        getCloudFile(fileId).then(res => {
-          if (active && res && res.blobUrl) {
-            setResolvedBlobUrl(res.blobUrl);
-          }
-          if (active) setIsLoadingPdf(false);
-        }).catch(() => {
-          if (active) setIsLoadingPdf(false);
-        });
-      } else {
-        setResolvedBlobUrl(currentLecture.fileUrl);
-      }
+      setIsLoadingPdf(true);
+      getCloudFile(currentLecture.fileUrl).then(res => {
+        if (active && res && res.blobUrl) {
+          setResolvedBlobUrl(res.blobUrl);
+        } else if (active) {
+          setResolvedBlobUrl(currentLecture.fileUrl);
+        }
+        if (active) setIsLoadingPdf(false);
+      }).catch(err => {
+        console.warn('PDF resolution note:', err);
+        if (active) {
+          setResolvedBlobUrl(currentLecture.fileUrl);
+          setIsLoadingPdf(false);
+        }
+      });
     } else {
       setResolvedBlobUrl(null);
     }
@@ -126,17 +127,20 @@ export const LectureViewerModal: React.FC<LectureViewerModalProps> = ({
 
   const handleDownloadFullBooklet = async () => {
     if (currentLecture.fileUrl) {
-      if (currentLecture.fileUrl.startsWith('cloud-file://')) {
-        const fileId = currentLecture.fileUrl.replace('cloud-file://', '');
-        const success = await downloadCloudFile(fileId, currentLecture.fileName || `${currentLecture.titleAr || 'Lecture'}.pdf`);
-        if (success) return;
+      const fileName = currentLecture.fileName || `${currentLecture.titleAr || 'Lecture'}.pdf`;
+      const success = await downloadCloudFile(currentLecture.fileUrl, fileName);
+      if (success) return;
+
+      if (resolvedBlobUrl || currentLecture.fileUrl) {
+        const a = document.createElement('a');
+        a.href = resolvedBlobUrl || currentLecture.fileUrl;
+        a.download = fileName;
+        a.target = '_blank';
+        document.body.appendChild(a);
+        a.click();
+        document.body.removeChild(a);
+        return;
       }
-      const a = document.createElement('a');
-      a.href = resolvedBlobUrl || currentLecture.fileUrl;
-      a.download = currentLecture.fileName || `${currentLecture.titleAr || 'Lecture'}.pdf`;
-      a.target = '_blank';
-      a.click();
-      return;
     }
 
     const fullContent = currentLecture.fullCurriculumTextAr || chapters.map(ch => 

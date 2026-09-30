@@ -16,6 +16,7 @@ export interface FirestoreContentState {
   summaries: Summary[];
   exams: ExamQuestionPaper[];
   schedule: ScheduleItem[];
+  deletedLectureIds?: string[];
 }
 
 export interface FirestoreDiagnosticResult {
@@ -113,7 +114,7 @@ export async function initFirestoreConnection() {
 /**
  * Save Lecture to Firestore Cloud Database with safety timeout
  */
-export async function saveLectureToFirestore(lecture: Lecture): Promise<boolean> {
+export async function saveLectureToFirestore(lecture: Lecture): Promise<{ success: boolean; error?: string }> {
   const path = 'lectures';
   try {
     const lectureRef = doc(db, path, lecture.id);
@@ -129,35 +130,40 @@ export async function saveLectureToFirestore(lecture: Lecture): Promise<boolean>
     // Safety timeout promise to prevent write stream hanging
     const writePromise = setDoc(lectureRef, sanitized, { merge: true });
     const timeoutPromise = new Promise((_, reject) => 
-      setTimeout(() => reject(new Error('Firestore write timeout')), 6000)
+      setTimeout(() => reject(new Error('Firestore write timeout')), 8000)
     );
 
     await Promise.race([writePromise, timeoutPromise]);
     console.log(`[Firestore] Successfully saved lecture: "${lecture.titleAr}" (${lecture.id})`);
-    return true;
+    return { success: true };
   } catch (error: any) {
-    if (error?.code === 'resource-exhausted' || error?.message?.includes('RESOURCE_EXHAUSTED') || error?.message?.includes('Write stream')) {
-      console.warn('[Firestore] Write quota note. Falling back to persistent server store.');
-      return false;
-    }
-    console.warn(`[Firestore] Write note for ${path}/${lecture.id}:`, error?.message || error);
-    return false;
+    const msg = error?.message || String(error);
+    console.warn(`[Firestore] Write note for ${path}/${lecture.id}:`, msg);
+    return { success: false, error: msg };
   }
 }
 
 /**
- * Delete Lecture from Firestore with safety timeout
+ * Delete Lecture from Firestore with safety timeout and persistent deletion tracking
  */
 export async function deleteLectureFromFirestore(lectureId: string): Promise<boolean> {
   const path = 'lectures';
   try {
     const lectureRef = doc(db, path, lectureId);
     const deletePromise = deleteDoc(lectureRef);
+
+    // Record in deleted_lectures collection so baseline & other devices know it's deleted
+    const deletedRef = doc(db, 'deleted_lectures', lectureId);
+    const recordPromise = setDoc(deletedRef, {
+      id: lectureId,
+      deletedAt: new Date().toISOString()
+    }, { merge: true });
+
     const timeoutPromise = new Promise((_, reject) => 
-      setTimeout(() => reject(new Error('Firestore delete timeout')), 6000)
+      setTimeout(() => reject(new Error('Firestore delete timeout')), 8000)
     );
-    await Promise.race([deletePromise, timeoutPromise]);
-    console.log(`[Firestore] Successfully deleted lecture: ${lectureId}`);
+    await Promise.race([Promise.all([deletePromise, recordPromise]), timeoutPromise]);
+    console.log(`[Firestore] Successfully deleted lecture and recorded in deleted_lectures: ${lectureId}`);
     return true;
   } catch (error: any) {
     console.warn(`[Firestore] Delete note for ${path}/${lectureId}:`, error?.message || error);
@@ -284,18 +290,28 @@ export async function deleteScheduleItemFromFirestore(itemId: string): Promise<b
  */
 export async function fetchAllFirestoreContent(): Promise<FirestoreContentState | null> {
   try {
-    const [lecturesSnap, summariesSnap, examsSnap, scheduleSnap] = await Promise.all([
+    const [lecturesSnap, summariesSnap, examsSnap, scheduleSnap, deletedSnap] = await Promise.all([
       getDocs(collection(db, 'lectures')).catch(() => null),
       getDocs(collection(db, 'summaries')).catch(() => null),
       getDocs(collection(db, 'exams')).catch(() => null),
       getDocs(collection(db, 'schedule')).catch(() => null),
+      getDocs(collection(db, 'deleted_lectures')).catch(() => null),
     ]);
+
+    const deletedLectureIds: string[] = [];
+    if (deletedSnap) {
+      deletedSnap.forEach(d => {
+        if (d.id) deletedLectureIds.push(d.id);
+      });
+    }
 
     const lectures: Lecture[] = [];
     if (lecturesSnap) {
       lecturesSnap.forEach(d => {
         const data = d.data();
-        if (data && data.id) lectures.push(data as Lecture);
+        if (data && data.id && !deletedLectureIds.includes(data.id)) {
+          lectures.push(data as Lecture);
+        }
       });
     }
 
@@ -323,11 +339,30 @@ export async function fetchAllFirestoreContent(): Promise<FirestoreContentState 
       });
     }
 
-    return { lectures, summaries, exams, schedule };
+    return { lectures, summaries, exams, schedule, deletedLectureIds };
   } catch (error) {
     console.warn('[Firestore] Error fetching all collections:', error);
     return null;
   }
+}
+
+/**
+ * Real-time listener for Firestore deleted lectures
+ */
+export function subscribeToFirestoreDeletedLectures(
+  onUpdate: (deletedIds: string[]) => void
+): () => void {
+  const colRef = collection(db, 'deleted_lectures');
+  return onSnapshot(
+    colRef,
+    (snapshot) => {
+      const deletedIds = snapshot.docs.map(d => d.id).filter(Boolean);
+      onUpdate(deletedIds);
+    },
+    (error) => {
+      console.warn('[Firestore Snapshot] Deleted lectures note:', error?.message);
+    }
+  );
 }
 
 /**

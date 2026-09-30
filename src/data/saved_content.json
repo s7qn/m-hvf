@@ -3,6 +3,8 @@
   "summaries": [],
   "exams": [],
   "schedule": null,
-  "deletedLectureIds": [],
-  "lastUpdated": "2026-09-27T20:44:43.840Z"
+  "deletedLectureIds": [
+    "lec-baath-curriculum-101"
+  ],
+  "lastUpdated": "2026-09-30T14:50:00.000Z"
 }
