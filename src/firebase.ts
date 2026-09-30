@@ -1,6 +1,6 @@
 import { initializeApp, getApps, getApp } from 'firebase/app';
 import { getAuth } from 'firebase/auth';
-import { getFirestore, doc, getDocFromServer } from 'firebase/firestore';
+import { initializeFirestore, getFirestore, memoryLocalCache, doc, getDocFromServer, Firestore } from 'firebase/firestore';
 import defaultConfig from '../firebase-applet-config.json';
 
 // Authoritative Firebase applet configuration
@@ -18,10 +18,23 @@ const firebaseConfig = defaultConfig;
 // Authoritative active Firebase application
 export const app = !getApps().length ? initializeApp(firebaseConfig) : getApp();
 
-// CRITICAL: Must use firestoreDatabaseId when provided
-export const db = firebaseConfig.firestoreDatabaseId 
-  ? getFirestore(app, firebaseConfig.firestoreDatabaseId)
-  : getFirestore(app);
+// CRITICAL: Initialize Firestore with memoryLocalCache to avoid BloomFilterError (Invalid hash count: 0)
+// and multi-tab/iframe IndexedDB persistence conflicts in AI Studio
+function createFirestoreInstance(): Firestore {
+  try {
+    return initializeFirestore(
+      app,
+      { localCache: memoryLocalCache() },
+      firebaseConfig.firestoreDatabaseId || undefined
+    );
+  } catch {
+    return firebaseConfig.firestoreDatabaseId
+      ? getFirestore(app, firebaseConfig.firestoreDatabaseId)
+      : getFirestore(app);
+  }
+}
+
+export const db = createFirestoreInstance();
 
 export const auth = getAuth(app);
 
