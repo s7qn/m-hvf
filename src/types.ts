@@ -100,6 +100,10 @@ export interface Summary {
   tagsAr: string[];
   tagsEn: string[];
   date: string;
+  keyFormulas?: string[];
+  contentAr?: string;
+  contentEn?: string;
+  isCustom?: boolean;
 }
 
 export interface ExamQuestionPaper {
@@ -116,6 +120,10 @@ export interface ExamQuestionPaper {
   solvedByEn?: string;
   downloadUrl?: string;
   date: string;
+  notesAr?: string;
+  notesEn?: string;
+  questionsCount?: number;
+  isCustom?: boolean;
 }
 
 export interface ScheduleItem {
@@ -135,6 +143,9 @@ export interface ScheduleItem {
   roomEn: string;
   instructorAr: string;
   instructorEn: string;
+  notesAr?: string;
+  notesEn?: string;
+  isCustom?: boolean;
 }
 
 export interface QuizAttempt {

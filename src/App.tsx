@@ -10,6 +10,10 @@ import { QuizzesView } from './components/QuizzesView';
 import { SecureQuizModal } from './components/SecureQuizModal';
 import { AdminAddModal } from './components/AdminAddModal';
 import { LectureViewerModal } from './components/LectureViewerModal';
+import { SummaryViewerModal } from './components/SummaryViewerModal';
+import { ExamViewerModal } from './components/ExamViewerModal';
+import { ScheduleItemViewerModal } from './components/ScheduleItemViewerModal';
+import { EditContentModal, EditableContentType } from './components/EditContentModal';
 import { StudentDashboard } from './components/StudentDashboard';
 
 import { 
@@ -253,6 +257,18 @@ export default function App() {
 
   // Active Lecture Preview Modal state
   const [viewingLecture, setViewingLecture] = useState<Lecture | null>(null);
+
+  // Active Summary Preview Modal state
+  const [viewingSummary, setViewingSummary] = useState<Summary | null>(null);
+
+  // Active Exam Preview Modal state
+  const [viewingExam, setViewingExam] = useState<ExamQuestionPaper | null>(null);
+
+  // Active Schedule Item Preview Modal state
+  const [viewingScheduleItem, setViewingScheduleItem] = useState<ScheduleItem | null>(null);
+
+  // Active Edit Content Modal state (Editing content after publishing)
+  const [editingContent, setEditingContent] = useState<{ type: EditableContentType; data: any } | null>(null);
 
   // --------------------------------------------------------------------------
   // TAB VISIBILITY & LOGO SWITCHING (User Requirement):
@@ -523,6 +539,27 @@ export default function App() {
     return { success: true };
   };
 
+  const handleUpdateLecture = async (updatedLecture: Lecture): Promise<{ success: boolean; error?: string }> => {
+    const saveResult = await saveSharedLecture(updatedLecture);
+    if (!saveResult.success) {
+      console.error('[UpdateLecture Error] Firestore write failed:', saveResult.error);
+      return {
+        success: false,
+        error: saveResult.error || (language === 'ar' ? 'فشل تحديث بيانات الملزمة في Firestore.' : 'Failed to update in Firestore.')
+      };
+    }
+
+    setLectures(prev => {
+      const exists = prev.some(l => l.id === updatedLecture.id);
+      const updated = exists ? prev.map(l => l.id === updatedLecture.id ? updatedLecture : l) : [updatedLecture, ...prev];
+      localStorage.setItem('saytara_lectures', JSON.stringify(updated));
+      return updated;
+    });
+
+    setViewingLecture(prev => (prev?.id === updatedLecture.id ? updatedLecture : prev));
+    return { success: true };
+  };
+
   const handleDeleteLecture = async (lectureId: string) => {
     // 1. Immediately record in deletedLectureIds state and localStorage so it never resurrects!
     setDeletedLectureIds(prev => {
@@ -559,6 +596,17 @@ export default function App() {
     saveSharedSummary(newSummary).catch(err => console.error(err));
   };
 
+  const handleUpdateSummary = async (updatedSummary: Summary) => {
+    setSummaries(prev => {
+      const exists = prev.some(s => s.id === updatedSummary.id);
+      const updated = exists ? prev.map(s => s.id === updatedSummary.id ? updatedSummary : s) : [updatedSummary, ...prev];
+      localStorage.setItem('saytara_summaries', JSON.stringify(updated));
+      return updated;
+    });
+    setViewingSummary(prev => (prev?.id === updatedSummary.id ? updatedSummary : prev));
+    await saveSharedSummary(updatedSummary).catch(err => console.error(err));
+  };
+
   const handleDeleteSummary = (summaryId: string) => {
     setSummaries(prev => {
       const updated = prev.filter(s => s.id !== summaryId);
@@ -575,6 +623,17 @@ export default function App() {
       return updated;
     });
     saveSharedScheduleItem(newItem).catch(err => console.error(err));
+  };
+
+  const handleUpdateScheduleItem = async (updatedItem: ScheduleItem) => {
+    setSchedule(prev => {
+      const exists = prev.some(item => item.id === updatedItem.id);
+      const updated = exists ? prev.map(item => item.id === updatedItem.id ? updatedItem : item) : [updatedItem, ...prev];
+      localStorage.setItem('saytara_schedule', JSON.stringify(updated));
+      return updated;
+    });
+    setViewingScheduleItem(prev => (prev?.id === updatedItem.id ? updatedItem : prev));
+    await saveSharedScheduleItem(updatedItem).catch(err => console.error(err));
   };
 
   const handleDeleteScheduleItem = (itemId: string) => {
@@ -599,6 +658,17 @@ export default function App() {
       return updated;
     });
     saveSharedExam(newExam).catch(err => console.error(err));
+  };
+
+  const handleUpdateExam = async (updatedExam: ExamQuestionPaper) => {
+    setExams(prev => {
+      const exists = prev.some(e => e.id === updatedExam.id);
+      const updated = exists ? prev.map(e => e.id === updatedExam.id ? updatedExam : e) : [updatedExam, ...prev];
+      localStorage.setItem('saytara_exams', JSON.stringify(updated));
+      return updated;
+    });
+    setViewingExam(prev => (prev?.id === updatedExam.id ? updatedExam : prev));
+    await saveSharedExam(updatedExam).catch(err => console.error(err));
   };
 
   const handleDeleteExam = (examId: string) => {
@@ -707,7 +777,8 @@ export default function App() {
               onStartQuiz={(lec) => setActiveQuizLecture(lec)}
               onOpenAddCustomLecture={(subId) => handleOpenAdminTab('lectures', subId)}
               onDeleteLecture={handleDeleteLecture}
-              onUpdateLecture={handleAddLecture}
+              onUpdateLecture={handleUpdateLecture}
+              onEditLecture={(lec) => setEditingContent({ type: 'lecture', data: lec })}
               readLectureIds={readLectureIds}
               onToggleReadLecture={handleToggleReadLecture}
               quizAttempts={quizAttempts}
@@ -752,6 +823,8 @@ export default function App() {
               isAdminUnlocked={isAdminUnlocked}
               onOpenAddModal={() => handleOpenAdminTab('summaries')}
               onDeleteSummary={handleDeleteSummary}
+              onSelectSummaryToView={(sum) => setViewingSummary(sum)}
+              onEditSummary={(sum) => setEditingContent({ type: 'summary', data: sum })}
             />
           )}
 
@@ -764,6 +837,8 @@ export default function App() {
               isAdminUnlocked={isAdminUnlocked}
               onOpenAddModal={() => handleOpenAdminTab('exams')}
               onDeleteExam={handleDeleteExam}
+              onSelectExamToView={(exam) => setViewingExam(exam)}
+              onEditExam={(exam) => setEditingContent({ type: 'exam', data: exam })}
             />
           )}
 
@@ -776,6 +851,8 @@ export default function App() {
               onOpenAddModal={() => handleOpenAdminTab('schedule')}
               onDeleteScheduleItem={handleDeleteScheduleItem}
               onResetSchedule={handleResetSchedule}
+              onSelectScheduleItemToView={(item) => setViewingScheduleItem(item)}
+              onEditScheduleItem={(item) => setEditingContent({ type: 'schedule', data: item })}
             />
           )}
 
@@ -840,11 +917,75 @@ export default function App() {
             isRead={readLectureIds.includes(viewingLecture.id)}
             onToggleRead={() => handleToggleReadLecture(viewingLecture.id)}
             onClose={() => setViewingLecture(null)}
-            onUpdateLecture={handleAddLecture}
+            onUpdateLecture={handleUpdateLecture}
+            onEdit={(lec) => {
+              setViewingLecture(null);
+              setEditingContent({ type: 'lecture', data: lec });
+            }}
             onStartQuiz={(lec) => {
               setViewingLecture(null);
               setActiveQuizLecture(lec);
             }}
+          />
+        )}
+
+        {/* Summary Preview Modal */}
+        {viewingSummary && (
+          <SummaryViewerModal
+            summary={viewingSummary}
+            subject={INITIAL_SUBJECTS.find(s => s.id === viewingSummary.subjectId)}
+            language={language}
+            isAdminUnlocked={isAdminUnlocked}
+            onClose={() => setViewingSummary(null)}
+            onEdit={(sum) => {
+              setViewingSummary(null);
+              setEditingContent({ type: 'summary', data: sum });
+            }}
+          />
+        )}
+
+        {/* Exam Paper Preview Modal */}
+        {viewingExam && (
+          <ExamViewerModal
+            exam={viewingExam}
+            subject={INITIAL_SUBJECTS.find(s => s.id === viewingExam.subjectId)}
+            language={language}
+            isAdminUnlocked={isAdminUnlocked}
+            onClose={() => setViewingExam(null)}
+            onEdit={(ex) => {
+              setViewingExam(null);
+              setEditingContent({ type: 'exam', data: ex });
+            }}
+          />
+        )}
+
+        {/* Schedule Item Preview Modal */}
+        {viewingScheduleItem && (
+          <ScheduleItemViewerModal
+            item={viewingScheduleItem}
+            subject={INITIAL_SUBJECTS.find(s => s.id === viewingScheduleItem.subjectId)}
+            language={language}
+            isAdminUnlocked={isAdminUnlocked}
+            onClose={() => setViewingScheduleItem(null)}
+            onEdit={(it) => {
+              setViewingScheduleItem(null);
+              setEditingContent({ type: 'schedule', data: it });
+            }}
+          />
+        )}
+
+        {/* Edit Content Modal (After Publishing) */}
+        {editingContent && (
+          <EditContentModal
+            type={editingContent.type}
+            data={editingContent.data}
+            subjects={INITIAL_SUBJECTS}
+            language={language}
+            onClose={() => setEditingContent(null)}
+            onSaveLecture={handleUpdateLecture}
+            onSaveSummary={handleUpdateSummary}
+            onSaveExam={handleUpdateExam}
+            onSaveScheduleItem={handleUpdateScheduleItem}
           />
         )}
 

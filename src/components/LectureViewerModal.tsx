@@ -39,6 +39,7 @@ interface LectureViewerModalProps {
   onToggleRead?: () => void;
   initialMode?: 'pdf' | 'full' | 'overview';
   onUpdateLecture?: (updated: Lecture) => void;
+  onEdit?: (lecture: Lecture) => void;
 }
 
 export const LectureViewerModal: React.FC<LectureViewerModalProps> = ({
@@ -51,6 +52,7 @@ export const LectureViewerModal: React.FC<LectureViewerModalProps> = ({
   onToggleRead,
   initialMode,
   onUpdateLecture,
+  onEdit,
 }) => {
   const t = TRANSLATIONS[language];
   const [currentLecture, setCurrentLecture] = useState<Lecture>(initialLecture);
@@ -266,14 +268,31 @@ export const LectureViewerModal: React.FC<LectureViewerModalProps> = ({
             </h2>
           </div>
 
-          <button
-            id="btn-close-lecture-viewer"
-            onClick={onClose}
-            className="p-2 rounded-xl bg-white/10 hover:bg-white/20 text-white transition-colors cursor-pointer shrink-0"
-            title={language === 'ar' ? 'إغلاق' : 'Close'}
-          >
-            <X className="w-5 h-5" />
-          </button>
+          <div className="flex items-center gap-2 shrink-0">
+            {onEdit && (
+              <button
+                id="btn-edit-lecture-from-modal"
+                onClick={() => {
+                  onClose();
+                  onEdit(currentLecture);
+                }}
+                className="p-2 sm:px-3 sm:py-2 rounded-xl bg-amber-500 hover:bg-amber-600 text-white text-xs font-black flex items-center gap-1.5 transition-colors cursor-pointer shadow-xs"
+                title={language === 'ar' ? 'تعديل معلومات الملزمة' : 'Edit Lecture Info'}
+              >
+                <Edit3 className="w-4 h-4" />
+                <span className="hidden sm:inline">{language === 'ar' ? 'تعديل' : 'Edit'}</span>
+              </button>
+            )}
+
+            <button
+              id="btn-close-lecture-viewer"
+              onClick={onClose}
+              className="p-2 rounded-xl bg-white/10 hover:bg-white/20 text-white transition-colors cursor-pointer"
+              title={language === 'ar' ? 'إغلاق' : 'Close'}
+            >
+              <X className="w-5 h-5" />
+            </button>
+          </div>
         </div>
 
         {/* Success or Error Notice Banner */}

@@ -10,7 +10,9 @@ import {
   Filter,
   Plus,
   Lock,
-  Trash2
+  Trash2,
+  Eye,
+  Edit3
 } from 'lucide-react';
 import { ExamQuestionPaper, Subject, Stage, Language } from '../types';
 import { TRANSLATIONS } from '../data/translations';
@@ -23,6 +25,8 @@ interface ExamsViewProps {
   isAdminUnlocked?: boolean;
   onOpenAddModal?: () => void;
   onDeleteExam?: (id: string) => void;
+  onSelectExamToView?: (exam: ExamQuestionPaper) => void;
+  onEditExam?: (exam: ExamQuestionPaper) => void;
 }
 
 export const ExamsView: React.FC<ExamsViewProps> = ({
@@ -33,6 +37,8 @@ export const ExamsView: React.FC<ExamsViewProps> = ({
   isAdminUnlocked = false,
   onOpenAddModal,
   onDeleteExam,
+  onSelectExamToView,
+  onEditExam,
 }) => {
   const t = TRANSLATIONS[language];
   const [selectedType, setSelectedType] = useState<string>('all');
@@ -168,12 +174,23 @@ export const ExamsView: React.FC<ExamsViewProps> = ({
                       </span>
                     </div>
 
-                    <div className="flex items-center gap-2">
+                    <div className="flex items-center gap-1.5">
                       {exam.solved && (
                         <span className="text-[11px] font-bold px-2 py-0.5 rounded-md bg-emerald-50 dark:bg-emerald-950/70 text-emerald-700 dark:text-emerald-300 border border-emerald-200 dark:border-emerald-800 flex items-center gap-1">
                           <CheckCircle2 className="w-3 h-3" />
                           <span>{t.solved}</span>
                         </span>
+                      )}
+                      {onEditExam && (
+                        <button
+                          type="button"
+                          id={`btn-edit-exam-${exam.id}`}
+                          onClick={() => onEditExam(exam)}
+                          className="p-1 rounded-lg text-slate-400 hover:text-amber-600 hover:bg-amber-50 dark:hover:bg-amber-950/40 transition-colors cursor-pointer"
+                          title={language === 'ar' ? 'تعديل هذا النموذج' : 'Edit Exam'}
+                        >
+                          <Edit3 className="w-3.5 h-3.5" />
+                        </button>
                       )}
                       {isAdminUnlocked && onDeleteExam && (
                         <button
@@ -188,7 +205,10 @@ export const ExamsView: React.FC<ExamsViewProps> = ({
                   </div>
 
                   <div>
-                    <h3 className="text-base sm:text-lg font-black text-blue-950 dark:text-white group-hover:text-blue-600 dark:group-hover:text-blue-400 transition-colors">
+                    <h3 
+                      onClick={() => onSelectExamToView?.(exam)}
+                      className="text-base sm:text-lg font-black text-blue-950 dark:text-white group-hover:text-blue-600 dark:group-hover:text-blue-400 transition-colors cursor-pointer"
+                    >
                       {language === 'ar' ? exam.titleAr : exam.titleEn}
                     </h3>
                     <div className="flex items-center gap-2 text-xs text-slate-500 dark:text-slate-400 mt-1">
@@ -207,22 +227,53 @@ export const ExamsView: React.FC<ExamsViewProps> = ({
                   )}
                 </div>
 
-                <div className="border-t border-slate-100 dark:border-slate-800 pt-4 mt-4 flex items-center justify-between text-xs text-slate-500 dark:text-slate-400">
+                <div className="border-t border-slate-100 dark:border-slate-800 pt-4 mt-4 flex items-center justify-between text-xs text-slate-500 dark:text-slate-400 gap-2 flex-wrap">
                   <span className="font-mono text-[11px] text-slate-400 dark:text-slate-500">
                     PDF Document
                   </span>
 
-                  <a
-                    href="#download"
-                    onClick={(e) => {
-                      e.preventDefault();
-                      alert(language === 'ar' ? `بدء تنزيل النموذج: ${exam.titleAr}` : `Downloading ${exam.titleEn}`);
-                    }}
-                    className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-blue-600 hover:bg-blue-700 text-white font-bold transition-all shadow-xs cursor-pointer"
-                  >
-                    <Download className="w-3.5 h-3.5" />
-                    <span>{t.downloadExam}</span>
-                  </a>
+                  <div className="flex items-center gap-2">
+                    {onSelectExamToView && (
+                      <button
+                        type="button"
+                        id={`btn-view-exam-${exam.id}`}
+                        onClick={() => onSelectExamToView(exam)}
+                        className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-blue-600 hover:bg-blue-700 text-white font-bold transition-all shadow-xs cursor-pointer text-xs"
+                        title={language === 'ar' ? 'معاينة النموذج والأسئلة والحل' : 'Preview Exam'}
+                      >
+                        <Eye className="w-3.5 h-3.5" />
+                        <span>{language === 'ar' ? 'معاينة النموذج' : 'Preview'}</span>
+                      </button>
+                    )}
+
+                    <button
+                      type="button"
+                      id={`btn-dl-exam-${exam.id}`}
+                      onClick={() => {
+                        if (exam.downloadUrl) {
+                          const a = document.createElement('a');
+                          a.href = exam.downloadUrl;
+                          a.download = `${exam.titleAr}.pdf`;
+                          a.target = '_blank';
+                          a.click();
+                          return;
+                        }
+                        const header = `منصة سيطرة التعليمية\nنموذج امتحاني: ${exam.titleAr}\nالعام الدراسي: ${exam.academicYear} | المرحلة: ${exam.stage}\n\n`;
+                        const blob = new Blob([header + (exam.notesAr || '')], { type: 'text/plain;charset=utf-8' });
+                        const url = URL.createObjectURL(blob);
+                        const a = document.createElement('a');
+                        a.href = url;
+                        a.download = `${exam.titleAr.replace(/\s+/g, '_')}_امتحان.txt`;
+                        a.click();
+                        URL.revokeObjectURL(url);
+                      }}
+                      className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-xl bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-300 font-bold transition-colors cursor-pointer"
+                      title={language === 'ar' ? 'تنزيل النموذج' : 'Download'}
+                    >
+                      <Download className="w-3.5 h-3.5" />
+                      <span className="hidden sm:inline">{language === 'ar' ? 'تنزيل' : 'Download'}</span>
+                    </button>
+                  </div>
                 </div>
               </div>
             );

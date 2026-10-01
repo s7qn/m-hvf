@@ -15,7 +15,9 @@ import {
   Building2,
   FlaskConical,
   Sparkles,
-  Info
+  Info,
+  Eye,
+  Edit3
 } from 'lucide-react';
 import { ScheduleItem, Stage, Language } from '../types';
 import { TRANSLATIONS } from '../data/translations';
@@ -28,6 +30,8 @@ interface ScheduleViewProps {
   onOpenAddModal?: () => void;
   onDeleteScheduleItem?: (id: string) => void;
   onResetSchedule?: () => void;
+  onSelectScheduleItemToView?: (item: ScheduleItem) => void;
+  onEditScheduleItem?: (item: ScheduleItem) => void;
 }
 
 const DAYS = [
@@ -46,6 +50,8 @@ export const ScheduleView: React.FC<ScheduleViewProps> = ({
   onOpenAddModal,
   onDeleteScheduleItem,
   onResetSchedule,
+  onSelectScheduleItemToView,
+  onEditScheduleItem,
 }) => {
   const t = TRANSLATIONS[language];
   const [viewMode, setViewMode] = useState<'grid' | 'cards'>('grid');
@@ -643,33 +649,65 @@ export const ScheduleView: React.FC<ScheduleViewProps> = ({
                       </div>
 
                       {/* Title */}
-                      <h3 className="text-base sm:text-lg font-black text-slate-900 dark:text-white mt-3">
+                      <h3 
+                        onClick={() => onSelectScheduleItemToView?.(item)}
+                        className="text-base sm:text-lg font-black text-slate-900 dark:text-white mt-3 hover:text-blue-600 dark:hover:text-blue-400 transition-colors cursor-pointer"
+                      >
                         {language === 'ar' ? item.subjectNameAr : item.subjectNameEn}
                       </h3>
                     </div>
 
-                    {/* Location & Instructor */}
+                    {/* Location & Instructor & Actions */}
                     <div className="pt-3 border-t border-slate-100 dark:border-slate-800 flex flex-wrap items-center justify-between gap-2 text-xs">
-                      <div className="flex items-center gap-1.5 text-slate-700 dark:text-slate-300 font-bold">
-                        <MapPin className="w-4 h-4 text-blue-600 dark:text-blue-400 shrink-0" />
-                        <span>{language === 'ar' ? item.roomAr : item.roomEn}</span>
+                      <div className="flex items-center gap-3 flex-wrap">
+                        <div className="flex items-center gap-1.5 text-slate-700 dark:text-slate-300 font-bold">
+                          <MapPin className="w-4 h-4 text-blue-600 dark:text-blue-400 shrink-0" />
+                          <span>{language === 'ar' ? item.roomAr : item.roomEn}</span>
+                        </div>
+
+                        <div className="flex items-center gap-1.5 text-blue-900 dark:text-blue-200 font-bold">
+                          <User className="w-4 h-4 text-blue-600 dark:text-blue-400 shrink-0" />
+                          <span>{language === 'ar' ? item.instructorAr : item.instructorEn}</span>
+                        </div>
                       </div>
 
-                      <div className="flex items-center gap-1.5 text-blue-900 dark:text-blue-200 font-bold">
-                        <User className="w-4 h-4 text-blue-600 dark:text-blue-400 shrink-0" />
-                        <span>{language === 'ar' ? item.instructorAr : item.instructorEn}</span>
-                      </div>
+                      <div className="flex items-center gap-1.5">
+                        {onSelectScheduleItemToView && (
+                          <button
+                            type="button"
+                            id={`btn-view-sch-${item.id}`}
+                            onClick={() => onSelectScheduleItemToView(item)}
+                            className="flex items-center gap-1 px-2.5 py-1 rounded-xl bg-blue-600 hover:bg-blue-700 text-white font-bold transition-all shadow-xs cursor-pointer text-xs"
+                            title={language === 'ar' ? 'معاينة تفاصيل المحاضرة' : 'Preview Details'}
+                          >
+                            <Eye className="w-3.5 h-3.5" />
+                            <span>{language === 'ar' ? 'معاينة' : 'Preview'}</span>
+                          </button>
+                        )}
 
-                      {isAdminUnlocked && onDeleteScheduleItem && (
-                        <button
-                          type="button"
-                          onClick={() => onDeleteScheduleItem(item.id)}
-                          className="p-1 rounded-lg text-slate-400 hover:text-red-600 hover:bg-red-50 dark:hover:bg-red-950/40 transition-colors"
-                          title={language === 'ar' ? 'حذف من الجدول' : 'Delete'}
-                        >
-                          <Trash2 className="w-4 h-4" />
-                        </button>
-                      )}
+                        {onEditScheduleItem && (
+                          <button
+                            type="button"
+                            id={`btn-edit-sch-${item.id}`}
+                            onClick={() => onEditScheduleItem(item)}
+                            className="p-1 rounded-lg text-slate-400 hover:text-amber-600 hover:bg-amber-50 dark:hover:bg-amber-950/40 transition-colors cursor-pointer"
+                            title={language === 'ar' ? 'تعديل موعد وبيانات المحاضرة' : 'Edit Schedule Item'}
+                          >
+                            <Edit3 className="w-3.5 h-3.5" />
+                          </button>
+                        )}
+
+                        {isAdminUnlocked && onDeleteScheduleItem && (
+                          <button
+                            type="button"
+                            onClick={() => onDeleteScheduleItem(item.id)}
+                            className="p-1 rounded-lg text-slate-400 hover:text-red-600 hover:bg-red-50 dark:hover:bg-red-950/40 transition-colors cursor-pointer"
+                            title={language === 'ar' ? 'حذف من الجدول' : 'Delete'}
+                          >
+                            <Trash2 className="w-3.5 h-3.5" />
+                          </button>
+                        )}
+                      </div>
                     </div>
                   </div>
                 );

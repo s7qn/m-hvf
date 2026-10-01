@@ -12,7 +12,9 @@ import {
   Layers,
   Plus,
   Lock,
-  Trash2
+  Trash2,
+  Eye,
+  Edit3
 } from 'lucide-react';
 import { Summary, Subject, Stage, Language } from '../types';
 import { TRANSLATIONS } from '../data/translations';
@@ -25,6 +27,8 @@ interface SummariesViewProps {
   isAdminUnlocked?: boolean;
   onOpenAddModal?: () => void;
   onDeleteSummary?: (id: string) => void;
+  onSelectSummaryToView?: (summary: Summary) => void;
+  onEditSummary?: (summary: Summary) => void;
 }
 
 export const SummariesView: React.FC<SummariesViewProps> = ({
@@ -35,6 +39,8 @@ export const SummariesView: React.FC<SummariesViewProps> = ({
   isAdminUnlocked = false,
   onOpenAddModal,
   onDeleteSummary,
+  onSelectSummaryToView,
+  onEditSummary,
 }) => {
   const t = TRANSLATIONS[language];
   const [selectedTag, setSelectedTag] = useState<string>('all');
@@ -129,10 +135,21 @@ export const SummariesView: React.FC<SummariesViewProps> = ({
                       {subject ? (language === 'ar' ? subject.nameAr : subject.nameEn) : 'هندسة السيطرة'} (المرحلة {summary.stage})
                     </span>
 
-                    <div className="flex items-center gap-2">
+                    <div className="flex items-center gap-1.5">
                       <span className="text-xs text-slate-400 font-mono font-bold">
                         {summary.pagesCount} {language === 'ar' ? 'صفحات' : 'pages'} • {summary.fileSize}
                       </span>
+                      {onEditSummary && (
+                        <button
+                          type="button"
+                          id={`btn-edit-sum-${summary.id}`}
+                          onClick={() => onEditSummary(summary)}
+                          className="p-1 rounded-lg text-slate-400 hover:text-amber-600 hover:bg-amber-50 dark:hover:bg-amber-950/40 transition-colors cursor-pointer"
+                          title={language === 'ar' ? 'تعديل هذا الملخص' : 'Edit Summary'}
+                        >
+                          <Edit3 className="w-3.5 h-3.5" />
+                        </button>
+                      )}
                       {isAdminUnlocked && onDeleteSummary && (
                         <button
                           onClick={() => onDeleteSummary(summary.id)}
@@ -146,7 +163,10 @@ export const SummariesView: React.FC<SummariesViewProps> = ({
                   </div>
 
                   <div>
-                    <h3 className="text-base sm:text-lg font-black text-blue-950 dark:text-white group-hover:text-blue-600 dark:group-hover:text-blue-400 transition-colors">
+                    <h3 
+                      onClick={() => onSelectSummaryToView?.(summary)}
+                      className="text-base sm:text-lg font-black text-blue-950 dark:text-white group-hover:text-blue-600 dark:group-hover:text-blue-400 transition-colors cursor-pointer"
+                    >
                       {language === 'ar' ? summary.titleAr : summary.titleEn}
                     </h3>
                     <p className="text-xs sm:text-sm text-slate-600 dark:text-slate-300 mt-1 leading-relaxed">
@@ -167,23 +187,54 @@ export const SummariesView: React.FC<SummariesViewProps> = ({
                   </div>
                 </div>
 
-                <div className="border-t border-slate-100 dark:border-slate-800 pt-4 mt-4 flex items-center justify-between text-xs text-slate-500 dark:text-slate-400">
+                <div className="border-t border-slate-100 dark:border-slate-800 pt-4 mt-4 flex items-center justify-between text-xs text-slate-500 dark:text-slate-400 gap-2 flex-wrap">
                   <div className="flex items-center gap-1.5">
                     <User className="w-3.5 h-3.5 text-blue-600 dark:text-blue-400" />
                     <span>{language === 'ar' ? summary.authorAr : summary.authorEn}</span>
                   </div>
 
-                  <a
-                    href="#download"
-                    onClick={(e) => {
-                      e.preventDefault();
-                      alert(language === 'ar' ? `بدء تنزيل: ${summary.titleAr} (${summary.fileSize})` : `Downloading ${summary.titleEn}`);
-                    }}
-                    className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-blue-50 dark:bg-blue-950/60 hover:bg-blue-100 text-blue-700 dark:text-blue-300 font-bold transition-colors cursor-pointer"
-                  >
-                    <Download className="w-3.5 h-3.5" />
-                    <span>{language === 'ar' ? 'تنزيل الملخص' : 'Download'}</span>
-                  </a>
+                  <div className="flex items-center gap-2">
+                    {onSelectSummaryToView && (
+                      <button
+                        type="button"
+                        id={`btn-view-sum-${summary.id}`}
+                        onClick={() => onSelectSummaryToView(summary)}
+                        className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-blue-600 hover:bg-blue-700 text-white font-bold transition-all shadow-xs cursor-pointer text-xs"
+                        title={language === 'ar' ? 'معاينة وقراءة الملخص' : 'Preview & Read'}
+                      >
+                        <Eye className="w-3.5 h-3.5" />
+                        <span>{language === 'ar' ? 'معاينة وقراءة' : 'Preview & Read'}</span>
+                      </button>
+                    )}
+
+                    <button
+                      type="button"
+                      id={`btn-dl-sum-${summary.id}`}
+                      onClick={() => {
+                        if (summary.downloadUrl) {
+                          const a = document.createElement('a');
+                          a.href = summary.downloadUrl;
+                          a.download = `${summary.titleAr}.pdf`;
+                          a.target = '_blank';
+                          a.click();
+                          return;
+                        }
+                        const header = `منصة سيطرة التعليمية\nملخص: ${summary.titleAr}\nالمرحلة: ${summary.stage} | إعداد: ${summary.authorAr}\n\n${summary.descriptionAr}\n\n`;
+                        const blob = new Blob([header + (summary.contentAr || '')], { type: 'text/plain;charset=utf-8' });
+                        const url = URL.createObjectURL(blob);
+                        const a = document.createElement('a');
+                        a.href = url;
+                        a.download = `${summary.titleAr.replace(/\s+/g, '_')}_ملخص.txt`;
+                        a.click();
+                        URL.revokeObjectURL(url);
+                      }}
+                      className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-xl bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-300 font-bold transition-colors cursor-pointer"
+                      title={language === 'ar' ? 'تنزيل الملخص' : 'Download'}
+                    >
+                      <Download className="w-3.5 h-3.5" />
+                      <span className="hidden sm:inline">{language === 'ar' ? 'تنزيل' : 'Download'}</span>
+                    </button>
+                  </div>
                 </div>
               </div>
             );

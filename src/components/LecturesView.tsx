@@ -21,7 +21,8 @@ import {
   Square,
   Check,
   X,
-  UploadCloud
+  UploadCloud,
+  Edit3
 } from 'lucide-react';
 import { Lecture, Subject, Stage, Language, QuizAttempt } from '../types';
 import { TRANSLATIONS } from '../data/translations';
@@ -38,6 +39,7 @@ interface LecturesViewProps {
   onOpenAddCustomLecture?: (subjectId?: string) => void;
   onDeleteLecture?: (lectureId: string) => void;
   onUpdateLecture?: (updated: Lecture) => Promise<any> | void;
+  onEditLecture?: (lecture: Lecture) => void;
   readLectureIds?: string[];
   onToggleReadLecture?: (lectureId: string) => void;
   quizAttempts?: Record<string, QuizAttempt>;
@@ -55,6 +57,7 @@ export const LecturesView: React.FC<LecturesViewProps> = ({
   onOpenAddCustomLecture,
   onDeleteLecture,
   onUpdateLecture,
+  onEditLecture,
   readLectureIds = [],
   onToggleReadLecture,
   quizAttempts = {},
@@ -602,6 +605,20 @@ export const LecturesView: React.FC<LecturesViewProps> = ({
                         disabled={uploadingLecId === lecture.id}
                       />
                     </label>
+
+                    {/* Edit Lecture Details Button */}
+                    {onEditLecture && (
+                      <button
+                        type="button"
+                        id={`btn-edit-lec-${lecture.id}`}
+                        onClick={() => onEditLecture(lecture)}
+                        className="p-2 rounded-xl border border-amber-300 dark:border-amber-700 bg-amber-50/70 dark:bg-amber-950/40 hover:bg-amber-100 text-amber-800 dark:text-amber-200 text-xs font-bold transition-colors cursor-pointer flex items-center gap-1"
+                        title={language === 'ar' ? 'تعديل معلومات وتفاصيل الملزمة' : 'Edit Lecture Info'}
+                      >
+                        <Edit3 className="w-3.5 h-3.5 text-amber-600 dark:text-amber-400" />
+                        <span className="hidden sm:inline">{language === 'ar' ? 'تعديل' : 'Edit'}</span>
+                      </button>
+                    )}
 
                     {onDeleteLecture && (
                       deletingLectureId === lecture.id ? (
