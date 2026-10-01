@@ -124,6 +124,8 @@ export interface ExamQuestionPaper {
   notesEn?: string;
   questionsCount?: number;
   isCustom?: boolean;
+  questionsTextAr?: string;
+  solutionTextAr?: string;
 }
 
 export interface ScheduleItem {

@@ -180,12 +180,16 @@ export const AdminAddModal: React.FC<AdminAddModalProps> = ({
   const [sumTitleAr, setSumTitleAr] = useState('');
   const [sumTitleEn, setSumTitleEn] = useState('');
   const [sumDescAr, setSumDescAr] = useState('');
+  const [sumContentAr, setSumContentAr] = useState('');
+  const [sumFormulasText, setSumFormulasText] = useState('');
   const [sumPagesCount, setSumPagesCount] = useState<number>(4);
   const [sumAuthorAr, setSumAuthorAr] = useState('م. أحمد العبيدي');
   const [sumAuthorEn, setSumAuthorEn] = useState('Eng. Ahmed');
   const [sumTagsText, setSumTagsText] = useState('قوانين السيطرة، دوال التحويل، مخططات بود');
   const [sumUploadedFileName, setSumUploadedFileName] = useState('');
   const [sumFileSize, setSumFileSize] = useState('1.8 MB');
+  const [sumFileUrl, setSumFileUrl] = useState('');
+  const [isUploadingSumFile, setIsUploadingSumFile] = useState(false);
 
   // ----------------------------------------------------
   // 3. SCHEDULE FORM STATE
@@ -215,8 +219,13 @@ export const AdminAddModal: React.FC<AdminAddModalProps> = ({
   const [examSolved, setExamSolved] = useState<boolean>(true);
   const [examSolvedByAr, setExamSolvedByAr] = useState('أستاذ المادة واللجنة الامتحانية');
   const [examSolvedByEn, setExamSolvedByEn] = useState('Examination Board');
+  const [examQuestionsTextAr, setExamQuestionsTextAr] = useState('');
+  const [examSolutionTextAr, setExamSolutionTextAr] = useState('');
+  const [examNotesAr, setExamNotesAr] = useState('');
   const [examUploadedFileName, setExamUploadedFileName] = useState('');
   const [examFileSize, setExamFileSize] = useState('3.2 MB');
+  const [examFileUrl, setExamFileUrl] = useState('');
+  const [isUploadingExamFile, setIsUploadingExamFile] = useState(false);
 
   // ----------------------------------------------------
   // PASSCODE VERIFICATION (Secure & Protected)
@@ -642,6 +651,7 @@ export const AdminAddModal: React.FC<AdminAddModalProps> = ({
     }
 
     const tagsAr = sumTagsText.split(/[,،\n]/).map(t => t.trim()).filter(Boolean);
+    const formulas = sumFormulasText.split('\n').map(f => f.trim()).filter(Boolean);
 
     const newSummary: Summary = {
       id: 'sum-' + Date.now(),
@@ -651,6 +661,8 @@ export const AdminAddModal: React.FC<AdminAddModalProps> = ({
       titleEn: sumTitleEn || sumTitleAr,
       descriptionAr: sumDescAr || sumTitleAr,
       descriptionEn: sumTitleEn || sumTitleAr,
+      contentAr: sumContentAr || undefined,
+      keyFormulas: formulas.length > 0 ? formulas : undefined,
       pagesCount: Number(sumPagesCount) || 4,
       fileSize: sumFileSize || '1.8 MB',
       authorAr: sumAuthorAr || 'مُعِدّ الملخص',
@@ -658,6 +670,7 @@ export const AdminAddModal: React.FC<AdminAddModalProps> = ({
       tagsAr: tagsAr.length > 0 ? tagsAr : ['ملخص قوانين', 'مسائل هندسية'],
       tagsEn: ['Formula Sheet', 'Engineering Problems'],
       date: new Date().toISOString().split('T')[0],
+      downloadUrl: sumFileUrl || undefined,
     };
 
     if (onAddSummary) {
@@ -722,6 +735,10 @@ export const AdminAddModal: React.FC<AdminAddModalProps> = ({
       solvedByAr: examSolved ? examSolvedByAr : undefined,
       solvedByEn: examSolved ? examSolvedByEn : undefined,
       date: new Date().toISOString().split('T')[0],
+      downloadUrl: examFileUrl || undefined,
+      notesAr: examNotesAr || undefined,
+      questionsTextAr: examQuestionsTextAr || undefined,
+      solutionTextAr: examSolutionTextAr || undefined,
     };
 
     if (onAddExam) {
@@ -1522,29 +1539,80 @@ export const AdminAddModal: React.FC<AdminAddModalProps> = ({
                       </div>
                     </div>
 
+                    <div className="space-y-3">
+                      <div>
+                        <label className="block text-xs font-bold text-slate-700 dark:text-slate-300 mb-1">
+                          {language === 'ar' ? 'نبذة ومقدمة عن الملخص' : 'Summary Overview'}
+                        </label>
+                        <textarea
+                          rows={2}
+                          value={sumDescAr}
+                          onChange={(e) => setSumDescAr(e.target.value)}
+                          placeholder="مثال: ملخص شامل لقوانين الاستقرارية وحساب معاملات الخطأ في الحالة المستقرة لنظم التحكم."
+                          className="w-full px-3 py-2 rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-xs text-slate-800 dark:text-white"
+                        />
+                      </div>
+
+                      <div>
+                        <label className="block text-xs font-bold text-slate-700 dark:text-slate-300 mb-1">
+                          {language === 'ar' ? 'المحتوى والشرح النصي الكامل للملخص' : 'Full Summary Content & Notes'}
+                        </label>
+                        <textarea
+                          rows={4}
+                          value={sumContentAr}
+                          onChange={(e) => setSumContentAr(e.target.value)}
+                          placeholder="اكتب أو الصق الشرح الهندسي المفصل للملخص ليعرض للطلاب مباشرة في قارئ الملخصات دون الحاجة للتنزيل..."
+                          className="w-full px-3 py-2 rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-xs text-slate-800 dark:text-white"
+                        />
+                      </div>
+
+                      <div>
+                        <label className="block text-xs font-bold text-slate-700 dark:text-slate-300 mb-1">
+                          {language === 'ar' ? 'بطاقة القوانين والمعادلات المعتمدة (سطر لكل قانون)' : 'Key Formulas'}
+                        </label>
+                        <textarea
+                          rows={3}
+                          value={sumFormulasText}
+                          onChange={(e) => setSumFormulasText(e.target.value)}
+                          placeholder="Kp = lim(s->0) G(s)&#10;Kv = lim(s->0) s*G(s)&#10;Ka = lim(s->0) s^2*G(s)"
+                          className="w-full px-3 py-2 rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-xs font-mono text-slate-800 dark:text-white"
+                        />
+                      </div>
+                    </div>
+
                     <div>
                       <label className="block text-xs font-bold text-slate-700 dark:text-slate-300 mb-1">
-                        {language === 'ar' ? 'ملف الملخص (PDF)' : 'PDF File'}
+                        {language === 'ar' ? 'ملف الملخص الأصلي اختياري (PDF)' : 'PDF File (Optional)'}
                       </label>
                       <div className="flex items-center gap-2">
                         <label className="px-3 py-2 rounded-xl border border-dashed border-blue-400 dark:border-blue-600 bg-blue-50/50 dark:bg-blue-950/40 text-blue-700 dark:text-blue-300 text-xs font-bold flex items-center gap-1.5 cursor-pointer hover:bg-blue-100/50 transition-colors shrink-0">
                           <FileUp className="w-4 h-4" />
-                          <span>{sumUploadedFileName ? 'تغيير الملف' : 'اختيار ملف PDF'}</span>
+                          <span>{isUploadingSumFile ? (language === 'ar' ? 'جارٍ الرفع...' : 'Uploading...') : (sumUploadedFileName ? 'تغيير الملف' : 'اختيار ملف PDF')}</span>
                           <input
                             type="file"
                             accept=".pdf"
                             className="hidden"
+                            disabled={isUploadingSumFile}
                             onChange={(e) => {
                               const file = e.target.files?.[0];
                               if (file) {
                                 setSumUploadedFileName(file.name);
                                 setSumFileSize(`${(file.size / (1024 * 1024)).toFixed(1)} MB`);
+                                setIsUploadingSumFile(true);
+                                uploadSharedFile(file).then(res => {
+                                  if (res && res.fileUrl) {
+                                    setSumFileUrl(res.fileUrl);
+                                    if (res.fileSize) setSumFileSize(res.fileSize);
+                                  }
+                                }).finally(() => {
+                                  setIsUploadingSumFile(false);
+                                });
                               }
                             }}
                           />
                         </label>
                         <span className="text-xs text-slate-500 dark:text-slate-400 truncate">
-                          {sumUploadedFileName || 'ملف PDF جاهز للتنزيل المباشر'}
+                          {sumUploadedFileName || 'ملف PDF اختياري للعرض والتنزيل'}
                         </span>
                       </div>
                     </div>
@@ -1833,6 +1901,49 @@ export const AdminAddModal: React.FC<AdminAddModalProps> = ({
                       </div>
                     </div>
 
+                    <div className="space-y-3">
+                      <div>
+                        <label className="block text-xs font-bold text-slate-700 dark:text-slate-300 mb-1">
+                          {language === 'ar' ? 'نص ورقة الأسئلة والمسائل الهندسية' : 'Questions & Problems Text'}
+                        </label>
+                        <textarea
+                          rows={4}
+                          value={examQuestionsTextAr}
+                          onChange={(e) => setExamQuestionsTextAr(e.target.value)}
+                          placeholder="اكتب أو الصق نص الأسئلة والمسائل لتعرض للطلاب فوراً داخل المنصة وبشكل سلس دون الحاجة للتنزيل..."
+                          className="w-full px-3 py-2 rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-xs text-slate-800 dark:text-white"
+                        />
+                      </div>
+
+                      {examSolved && (
+                        <div>
+                          <label className="block text-xs font-bold text-slate-700 dark:text-slate-300 mb-1">
+                            {language === 'ar' ? 'نص الحل النموذجي والخطوات الحسابية' : 'Model Answer & Steps'}
+                          </label>
+                          <textarea
+                            rows={4}
+                            value={examSolutionTextAr}
+                            onChange={(e) => setExamSolutionTextAr(e.target.value)}
+                            placeholder="اكتب أو الصق الحل النموذجي المعتمد، خطوات الإجابة، ومعادلات الحل..."
+                            className="w-full px-3 py-2 rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-xs text-slate-800 dark:text-white"
+                          />
+                        </div>
+                      )}
+
+                      <div>
+                        <label className="block text-xs font-bold text-slate-700 dark:text-slate-300 mb-1">
+                          {language === 'ar' ? 'تعليمات وإرشادات الامتحان' : 'Exam Instructions & Notes'}
+                        </label>
+                        <textarea
+                          rows={2}
+                          value={examNotesAr}
+                          onChange={(e) => setExamNotesAr(e.target.value)}
+                          placeholder="مثال: الإجابة عن أربعة أسئلة فقط، يُسمح باستخدام المخططات الهندسية والحاسبة."
+                          className="w-full px-3 py-2 rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-xs text-slate-800 dark:text-white"
+                        />
+                      </div>
+                    </div>
+
                     <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                       <div>
                         <label className="flex items-center gap-2 mb-2 cursor-pointer">
@@ -1860,27 +1971,37 @@ export const AdminAddModal: React.FC<AdminAddModalProps> = ({
 
                       <div>
                         <label className="block text-xs font-bold text-slate-700 dark:text-slate-300 mb-1">
-                          {language === 'ar' ? 'ملف الأسئلة والحل (PDF)' : 'PDF Attachment'}
+                          {language === 'ar' ? 'ملف الأسئلة والحل الأصلي اختياري (PDF)' : 'PDF Attachment (Optional)'}
                         </label>
                         <div className="flex items-center gap-2">
                           <label className="px-3 py-2 rounded-xl border border-dashed border-blue-400 dark:border-blue-600 bg-blue-50/50 dark:bg-blue-950/40 text-blue-700 dark:text-blue-300 text-xs font-bold flex items-center gap-1.5 cursor-pointer hover:bg-blue-100/50 transition-colors shrink-0">
                             <FileUp className="w-4 h-4" />
-                            <span>{examUploadedFileName ? 'تغيير الملف' : 'اختيار ملف PDF'}</span>
+                            <span>{isUploadingExamFile ? (language === 'ar' ? 'جارٍ الرفع...' : 'Uploading...') : (examUploadedFileName ? 'تغيير الملف' : 'اختيار ملف PDF')}</span>
                             <input
                               type="file"
                               accept=".pdf"
                               className="hidden"
+                              disabled={isUploadingExamFile}
                               onChange={(e) => {
                                 const file = e.target.files?.[0];
                                 if (file) {
                                   setExamUploadedFileName(file.name);
                                   setExamFileSize(`${(file.size / (1024 * 1024)).toFixed(1)} MB`);
+                                  setIsUploadingExamFile(true);
+                                  uploadSharedFile(file).then(res => {
+                                    if (res && res.fileUrl) {
+                                      setExamFileUrl(res.fileUrl);
+                                      if (res.fileSize) setExamFileSize(res.fileSize);
+                                    }
+                                  }).finally(() => {
+                                    setIsUploadingExamFile(false);
+                                  });
                                 }
                               }}
                             />
                           </label>
                           <span className="text-xs text-slate-500 dark:text-slate-400 truncate">
-                            {examUploadedFileName || 'نموذج PDF جاهز للأرشفة والتنزيل'}
+                            {examUploadedFileName || 'ملف PDF اختياري للعرض والتنزيل'}
                           </span>
                         </div>
                       </div>

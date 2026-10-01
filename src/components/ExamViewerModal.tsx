@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { 
   X, 
   HelpCircle, 
@@ -15,10 +15,14 @@ import {
   Award,
   AlertCircle,
   Eye,
-  ChevronDown,
-  ChevronUp
+  Maximize2,
+  UploadCloud,
+  FileCheck,
+  CheckCircle,
+  ShieldCheck
 } from 'lucide-react';
 import { ExamQuestionPaper, Subject, Language } from '../types';
+import { getCloudFile, downloadCloudFile } from '../services/cloudFileStorage';
 
 interface ExamViewerModalProps {
   exam: ExamQuestionPaper;
@@ -37,9 +41,40 @@ export const ExamViewerModal: React.FC<ExamViewerModalProps> = ({
   onEdit,
   isAdminUnlocked = false,
 }) => {
-  const [activeTab, setActiveTab] = useState<'paper' | 'solution'>('paper');
-  const [copied, setCopied] = useState(false);
-  const [expandedQuestionIdx, setExpandedQuestionIdx] = useState<number | null>(0);
+  const [resolvedBlobUrl, setResolvedBlobUrl] = useState<string | null>(null);
+  const [isLoadingFile, setIsLoadingFile] = useState(false);
+  const [copiedText, setCopiedText] = useState(false);
+  const [fontSizeClass, setFontSizeClass] = useState<'text-sm' | 'text-base' | 'text-lg'>('text-base');
+
+  const fileUrl = exam.downloadUrl || (exam as any).fileUrl;
+  
+  // Default to 'questions' reader tab for smooth in-app reading without browser download popups
+  const [activeTab, setActiveTab] = useState<'questions' | 'solution' | 'document'>('questions');
+
+  // Resolve cloud file only when user explicitly switches to document tab
+  useEffect(() => {
+    let active = true;
+    if (fileUrl && activeTab === 'document') {
+      setIsLoadingFile(true);
+      getCloudFile(fileUrl).then(res => {
+        if (active && res && res.blobUrl) {
+          setResolvedBlobUrl(res.blobUrl);
+        } else if (active) {
+          setResolvedBlobUrl(fileUrl);
+        }
+        if (active) setIsLoadingFile(false);
+      }).catch(err => {
+        console.warn('[ExamViewer] File resolution note:', err);
+        if (active) {
+          setResolvedBlobUrl(fileUrl);
+          setIsLoadingFile(false);
+        }
+      });
+    }
+    return () => {
+      active = false;
+    };
+  }, [fileUrl, activeTab]);
 
   const examTypeLabels: Record<string, { ar: string; en: string }> = {
     final: { ar: 'الامتحان النهائي (Final Exam)', en: 'Final Exam' },
@@ -48,111 +83,86 @@ export const ExamViewerModal: React.FC<ExamViewerModalProps> = ({
     quiz: { ar: 'اختبار قصير (Quiz)', en: 'Class Quiz' },
   };
 
-  // Structured sample questions if none explicitly stored in custom exam
-  const questions = [
-    {
-      num: 1,
-      titleAr: 'السؤال الأول: اشتقاق دالة التحويل (Transfer Function) والنمذجة الرياضية',
-      titleEn: 'Question 1: Transfer Function Derivation & Modeling',
-      points: 25,
-      bodyAr: 'منظومة كهربائية-ميكانيكية تخضع للمعادلة التفاضلية:\nJ (d²θ/dt²) + B (dθ/dt) + K θ(t) = T(t)\nأوجد دالة التحويل G(s) = Θ(s) / T(s) بفرض أن الشروط الابتدائية مساوية للصفر، وحدد مرتبة المنظومة والتردد الطبيعي.',
-      solutionAr: 'الحل النموذجي:\n1. بأخذ تحويل لابلاس (Laplace Transform) لكلا الطرفين مع شروط ابتدائية صفرية:\n   J s² Θ(s) + B s Θ(s) + K Θ(s) = T(s)\n2. استخراج Θ(s) كعامل مشترك:\n   Θ(s) [J s² + B s + K] = T(s)\n3. دالة التحويل:\n   G(s) = Θ(s) / T(s) = 1 / (J s² + B s + K)\n4. المنظومة من الدرجة الثانية (2nd Order System)، والتردد الطبيعي:\n   ωn = √(K / J) rad/s، ونسبة التخميد:\n   ζ = B / (2 √(J K)).'
-    },
-    {
-      num: 2,
-      titleAr: 'السؤال الثاني: اختبار الاستقرارية باستخدام معيار روث-هورويتز (Routh-Hurwitz)',
-      titleEn: 'Question 2: Routh-Hurwitz Stability Criterion',
-      points: 25,
-      bodyAr: 'المعادلة المميزة لمنظومة سيطرة ذات تغذية عكسية هي:\ns⁴ + 2s³ + 8s² + 12s + 20 = 0\nقم بإنشاء جدول روث، وحدد هل المنظومة مستقرة أم لا؟ واذكر عدد الأقطاب الواقعة في النصف الأيمن لمستوى s إن وجدت.',
-      solutionAr: 'الحل النموذجي:\n1. تكوين مصفوفة روث:\n   s⁴:  1    8   20\n   s³:  2   12    0\n   s²:  b1   b2   0   => b1 = (2*8 - 1*12)/2 = (16-12)/2 = 2,  b2 = (2*20 - 0)/2 = 20\n   s¹:  c1   0    0   => c1 = (2*12 - 2*20)/2 = (24-40)/2 = -8\n   s⁰:  d1   0    0   => d1 = 20\n2. عناصر العمود الأول:\n   +1, +2, +2, -8, +20\n3. نلاحظ وجود تغيرين في الإشارة (من +2 إلى -8 ومن -8 إلى +20).\n4. النتيجة: المنظومة غير مستقرة (Unstable System) وبها قطبان (2 Poles) في النصف الأيمن غير المستقر (RHP).'
-    },
-    {
-      num: 3,
-      titleAr: 'السؤال الثالث: تحليل الخطأ في الحالة المستقرة (Steady-State Error Analysis)',
-      titleEn: 'Question 3: Steady-State Error Calculation',
-      points: 25,
-      bodyAr: 'منظومة ذات مسار مفتوح دالتها:\nG(s) = 50 / [s (s + 5) (s + 10)] مع H(s) = 1\nأوجد نوع المنظومة (System Type)، وثوابت الخطأ Kp و Kv و Ka، واحسب قيمة خطأ الحالة المستقرة ess عند إدخال إشارة منحدر رتبة وحدة r(t) = t u(t).',
-      solutionAr: 'الحل النموذجي:\n1. المنظومة تحتوي على قطب واحد عند الأصل (s=0)، إذن نوع المنظومة هو Type 1.\n2. ثابت الخطأ الموضعي Kp = lim(s->0) G(s) = ∞\n3. ثابت خطأ السرعة Kv = lim(s->0) s G(s) = lim(s->0) 50 / [(s+5)(s+10)] = 50 / 50 = 1 s⁻¹.\n4. ثابت خطأ التسارع Ka = lim(s->0) s² G(s) = 0.\n5. خطأ الحالة المستقرة لإشارة المنحدر (Ramp Input):\n   ess = 1 / Kv = 1 / 1 = 1.0.'
-    },
-    {
-      num: 4,
-      titleAr: 'السؤال الرابع: مخططات بود (Bode Plot) وهوامش الاستقرار',
-      titleEn: 'Question 4: Bode Plots & Stability Margins',
-      points: 25,
-      bodyAr: 'اشرح رياضياً مفهوم هامش الكسب (Gain Margin) وهامش الطور (Phase Margin)، وكيفية حسابهما بيانياً، مع توضيح شرط استقرار المنظومة بناءً عليهما.',
-      solutionAr: 'الحل النموذجي:\n1. تردد تقاطع الطور (Phase Crossover Frequency ωpc): هو التردد الذي يكون عنده الطور ∠G(jω) = -180°.\n   - هامش الكسب: GM = 1 / |G(jωpc)| (أو بالديسبل: GM_dB = -20 log₁₀ |G(jωpc)|).\n2. تردد تقاطع الكسب (Gain Crossover Frequency ωgc): هو التردد الذي يكون عنده الكسب |G(jω)| = 1 (أي 0 dB).\n   - هامش الطور: PM = 180° + ∠G(jωgc).\n3. شروط الاستقرار:\n   - تكون المنظومة مستقرة إذا كان كل من GM و PM موجباً (GM > 0 dB و PM > 0°)، بشرط أن يكون ωgc < ωpc.'
-    }
-  ];
+  const fullQuestionsText = exam.questionsTextAr || exam.notesAr || (
+    language === 'ar'
+      ? `نموذج الأسئلة الرسمي لمادة ${subject?.nameAr || 'المادة الدراسية'}\nالعام الدراسي: ${exam.academicYear} | الدور: ${examTypeLabels[exam.type]?.ar || exam.type}\nالمرحلة: ${exam.stage}\n\nتعليمات الامتحان:\n1. الإجابة عن جميع الأسئلة بدقة مع كتابة القوانين الهندسية المعتمدة.\n2. يُسمح باستخدام الحاسبة الهندسية غير القابلة للبرمجة.\n3. توضيح خطوات الحل الرياضي والرسم التخطيطي للدوائر ومخططات السيطرة.`
+      : `Official examination questions for ${subject?.nameEn || 'Subject'}\nAcademic Year: ${exam.academicYear}\n\nInstructions:\n1. Answer all questions clearly with accredited engineering formulas.\n2. Non-programmable scientific calculators are permitted.\n3. Show all mathematical derivations and block diagrams.`
+  );
+
+  const fullSolutionText = exam.solutionTextAr || (
+    exam.solved
+      ? (language === 'ar'
+          ? `الحل النموذجي المعتمد لنموذج: ${exam.titleAr}\nتدقيق ومراجعة: ${exam.solvedByAr || 'اللجنة العلمية وقسم هندسة السيطرة'}\n\nخطوات الحل النموذجي:\n- تم تدقيق جميع المعادلات الحسابية وجداول الحقيقة ونماذج الاستقرارية وفق المعايير الوزارية والجامعية المعتمدة.\n- التفاصيل الكاملة والخطوات الحسابية مطابقة لمفردات المنهج المعتمد.`
+          : `Verified model solution for ${exam.titleEn || exam.titleAr}\nReviewed by: ${exam.solvedByEn || exam.solvedByAr || 'Scientific Department'}\n\nAll formulas and step-by-step derivations are checked according to university standards.`)
+      : null
+  );
 
   const handleCopyQuestions = () => {
-    const text = `نموذج امتحاني: ${exam.titleAr}\n` +
-      `المادة: ${subject?.nameAr || 'المادة الدراسية'}\n` +
-      `العام الدراسي: ${exam.academicYear} | النوع: ${examTypeLabels[exam.type]?.ar || exam.type}\n` +
-      `==================================================\n\n` +
-      questions.map(q => `${q.titleAr} (${q.points} درجة):\n${q.bodyAr}\n\n`).join('--------------------------------------------------\n\n');
+    const header = `جمهورية العراق - وزارة التعليم العالي والبحث العلمي\nقسم هندسة السيطرة والأتمتة\n` +
+      `النموذج الامتحاني: ${exam.titleAr}\nالمادة: ${subject?.nameAr || 'المادة'} (المرحلة ${exam.stage})\n` +
+      `العام الدراسي: ${exam.academicYear} | ${examTypeLabels[exam.type]?.ar || exam.type}\n\n`;
 
-    navigator.clipboard.writeText(text);
-    setCopied(true);
-    setTimeout(() => setCopied(false), 2500);
+    navigator.clipboard.writeText(header + fullQuestionsText);
+    setCopiedText(true);
+    setTimeout(() => setCopiedText(false), 2500);
   };
 
-  const handleDownload = () => {
-    if (exam.downloadUrl) {
-      const a = document.createElement('a');
-      a.href = exam.downloadUrl;
-      a.download = `${exam.titleAr}.pdf`;
-      a.target = '_blank';
-      a.click();
-      return;
+  const handleDownload = async () => {
+    if (fileUrl) {
+      const fileName = `${exam.titleAr || 'Exam'}.pdf`;
+      const ok = await downloadCloudFile(fileUrl, fileName);
+      if (ok) return;
     }
 
     const header = `جمهورية العراق - وزارة التعليم العالي والبحث العلمي\n` +
-      `جامعة التكنولوجيا - قسم هندسة السيطرة والأتمتة\n` +
-      `النموذج الامتحاني المعتمد: ${exam.titleAr}\n` +
-      `المادة: ${subject?.nameAr || 'السيطرة والأتمتة'} (المرحلة ${exam.stage})\n` +
+      `قسم هندسة السيطرة والأتمتة\n` +
+      `النموذج الامتحاني: ${exam.titleAr}\n` +
+      `المادة: ${subject?.nameAr || 'المادة الدراسية'} (المرحلة ${exam.stage})\n` +
       `العام الدراسي: ${exam.academicYear} | الدور: ${examTypeLabels[exam.type]?.ar || exam.type}\n` +
-      (exam.solved ? `حالة الحل: تم الحل والتدقيق المعتمد بواسطة (${exam.solvedByAr || 'اللجنة العلمية'})\n` : '') +
-      `======================================================================\n\n`;
+      (exam.solved ? `حالة الحل: معتمد ومدقق بواسطة (${exam.solvedByAr || 'اللجنة العلمية'})\n` : '') +
+      `======================================================================\n\n` +
+      `[نص ورقة الأسئلة والتعليمات]:\n${fullQuestionsText}\n\n` +
+      (fullSolutionText ? `======================================================================\n[الحل النموذجي المعتمد]:\n${fullSolutionText}\n\n` : '');
 
-    const content = questions.map(q => 
-      `[${q.titleAr} - ${q.points} درجة]\n${q.bodyAr}\n\n` +
-      `[الحل النموذجي والتفصيلي]:\n${q.solutionAr}\n\n` +
-      `======================================================================\n\n`
-    ).join('');
-
-    const blob = new Blob([header + content], { type: 'text/plain;charset=utf-8' });
+    const blob = new Blob([header], { type: 'text/plain;charset=utf-8' });
     const url = URL.createObjectURL(blob);
     const a = document.createElement('a');
     a.href = url;
-    a.download = `${exam.titleAr.replace(/\s+/g, '_')}_النموذج_مع_الحل.txt`;
+    a.download = `${exam.titleAr.replace(/\s+/g, '_')}_الامتحان.txt`;
     a.click();
     URL.revokeObjectURL(url);
   };
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-4 bg-slate-950/70 backdrop-blur-md animate-fadeIn">
-      <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-3xl w-full max-w-4xl max-h-[92vh] flex flex-col shadow-2xl overflow-hidden transition-all">
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-2 sm:p-4 bg-slate-950/75 backdrop-blur-md animate-fadeIn">
+      <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-3xl w-full max-w-5xl max-h-[95vh] flex flex-col shadow-2xl overflow-hidden transition-all my-auto">
         
-        {/* Modal Top Header */}
-        <div className="p-5 sm:p-6 border-b border-slate-100 dark:border-slate-800 flex items-center justify-between gap-3 bg-gradient-to-r from-blue-50/70 to-indigo-50/40 dark:from-slate-800/70 dark:to-slate-900">
-          <div className="space-y-1">
+        {/* Top Header */}
+        <div className="p-4 sm:p-5 border-b border-slate-100 dark:border-slate-800 flex items-center justify-between gap-3 bg-gradient-to-r from-blue-900 via-indigo-900 to-slate-900 text-white shrink-0">
+          <div className="space-y-1 min-w-0 flex-1">
             <div className="flex items-center gap-2 flex-wrap">
-              <span className="px-2.5 py-0.5 rounded-full text-[11px] font-black bg-blue-600 text-white shadow-xs">
-                {language === 'ar' ? 'أرشيف النماذج الامتحانية' : 'Exam Archive'}
+              <span className="px-2.5 py-0.5 rounded-full text-[11px] font-black bg-blue-500/30 text-blue-200 border border-blue-400/30">
+                {language === 'ar' ? 'أرشيف الأسئلة والامتحانات' : 'Exam Archive'}
               </span>
               {subject && (
-                <span className="px-2.5 py-0.5 rounded-full text-[11px] font-bold bg-white dark:bg-slate-800 text-blue-700 dark:text-blue-300 border border-blue-200 dark:border-slate-700">
+                <span className="px-2.5 py-0.5 rounded-full text-[11px] font-bold bg-white/10 text-blue-200">
                   {subject.code} — {language === 'ar' ? subject.nameAr : subject.nameEn}
                 </span>
               )}
-              <span className="px-2 py-0.5 rounded-md text-[11px] font-bold bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-300">
+              <span className="px-2 py-0.5 rounded-md text-[11px] font-bold bg-white/10 text-white">
                 {exam.academicYear}
               </span>
-              <span className="px-2 py-0.5 rounded-md text-[11px] font-bold bg-indigo-100 dark:bg-indigo-950/80 text-indigo-800 dark:text-indigo-300">
+              <span className="px-2 py-0.5 rounded-md text-[11px] font-bold bg-indigo-500/30 text-indigo-200 border border-indigo-400/30">
                 {examTypeLabels[exam.type]?.ar || exam.type}
               </span>
+              {exam.solved && (
+                <span className="px-2 py-0.5 rounded-md text-[11px] font-bold bg-emerald-500/20 text-emerald-300 border border-emerald-400/30 flex items-center gap-1">
+                  <ShieldCheck className="w-3.5 h-3.5" />
+                  <span>{language === 'ar' ? 'حل نموذجي معتمد' : 'Solved'}</span>
+                </span>
+              )}
             </div>
-            <h2 className="text-lg sm:text-xl font-black text-slate-900 dark:text-white pt-1">
+            <h2 className="text-base sm:text-xl font-black text-white truncate pt-0.5">
               {language === 'ar' ? exam.titleAr : exam.titleEn}
             </h2>
           </div>
@@ -161,174 +171,126 @@ export const ExamViewerModal: React.FC<ExamViewerModalProps> = ({
             {onEdit && (
               <button
                 type="button"
+                id="btn-edit-exam-from-modal"
                 onClick={() => {
                   onClose();
                   onEdit(exam);
                 }}
-                className="p-2 sm:px-3.5 sm:py-2 rounded-xl bg-amber-500 hover:bg-amber-600 text-white text-xs font-black flex items-center gap-1.5 shadow-xs transition-all cursor-pointer"
-                title={language === 'ar' ? 'تعديل معلومات هذا النموذج' : 'Edit Exam'}
+                className="p-2 sm:px-3 sm:py-2 rounded-xl bg-amber-500 hover:bg-amber-600 text-white text-xs font-black flex items-center gap-1.5 transition-colors cursor-pointer shadow-xs"
+                title={language === 'ar' ? 'تعديل هذا النموذج' : 'Edit Exam'}
               >
-                <Edit3 className="w-3.5 h-3.5" />
+                <Edit3 className="w-4 h-4" />
                 <span className="hidden sm:inline">{language === 'ar' ? 'تعديل' : 'Edit'}</span>
               </button>
             )}
 
             <button
+              id="btn-close-exam-viewer"
               onClick={onClose}
-              className="p-2 rounded-xl bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 text-slate-600 dark:text-slate-300 transition-colors cursor-pointer"
-              aria-label="Close"
+              className="p-2 rounded-xl bg-white/10 hover:bg-white/20 text-white transition-colors cursor-pointer"
+              title={language === 'ar' ? 'إغلاق' : 'Close'}
             >
               <X className="w-5 h-5" />
             </button>
           </div>
         </div>
 
-        {/* View Mode Switcher */}
-        <div className="px-6 py-2.5 bg-slate-100/70 dark:bg-slate-800/60 border-b border-slate-200 dark:border-slate-800 flex items-center justify-between gap-3 flex-wrap">
-          <div className="flex items-center gap-2 bg-white dark:bg-slate-900 p-1 rounded-xl border border-slate-200 dark:border-slate-700">
+        {/* View Mode Tabs (Smooth & In-App like Lectures) */}
+        <div className="px-4 sm:px-6 py-2.5 bg-slate-100/80 dark:bg-slate-800/60 border-b border-slate-200 dark:border-slate-800 flex items-center justify-between gap-3 flex-wrap shrink-0">
+          <div className="flex items-center gap-1.5 bg-white dark:bg-slate-900 p-1 rounded-xl border border-slate-200 dark:border-slate-700">
             <button
               type="button"
-              onClick={() => setActiveTab('paper')}
+              id="tab-exam-questions"
+              onClick={() => setActiveTab('questions')}
               className={`px-3.5 py-1.5 rounded-lg text-xs font-black flex items-center gap-1.5 transition-all cursor-pointer ${
-                activeTab === 'paper'
+                activeTab === 'questions'
                   ? 'bg-blue-600 text-white shadow-xs'
                   : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white'
               }`}
             >
               <FileText className="w-3.5 h-3.5" />
-              <span>{language === 'ar' ? 'ورقة الأسئلة والنموذج' : 'Question Paper'}</span>
+              <span>{language === 'ar' ? '📝 ورقة الأسئلة والنموذج' : 'Questions Sheet'}</span>
             </button>
 
-            <button
-              type="button"
-              onClick={() => setActiveTab('solution')}
-              className={`px-3.5 py-1.5 rounded-lg text-xs font-black flex items-center gap-1.5 transition-all cursor-pointer ${
-                activeTab === 'solution'
-                  ? 'bg-emerald-600 text-white shadow-xs'
-                  : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white'
-              }`}
-            >
-              <CheckCircle2 className="w-3.5 h-3.5" />
-              <span>{language === 'ar' ? 'الحل النموذجي المعتمد' : 'Model Answer'}</span>
-            </button>
-          </div>
+            {(exam.solved || fullSolutionText) && (
+              <button
+                type="button"
+                id="tab-exam-solution"
+                onClick={() => setActiveTab('solution')}
+                className={`px-3.5 py-1.5 rounded-lg text-xs font-black flex items-center gap-1.5 transition-all cursor-pointer ${
+                  activeTab === 'solution'
+                    ? 'bg-emerald-600 text-white shadow-xs'
+                    : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white'
+                }`}
+              >
+                <CheckCircle2 className="w-3.5 h-3.5 text-emerald-400" />
+                <span>{language === 'ar' ? '✅ الحل النموذجي المعتمد' : 'Model Answer'}</span>
+              </button>
+            )}
 
-          <div className="flex items-center gap-3 text-xs">
-            {exam.solved ? (
-              <span className="px-3 py-1 rounded-xl bg-emerald-100 dark:bg-emerald-950/80 text-emerald-800 dark:text-emerald-300 font-bold flex items-center gap-1.5 border border-emerald-200 dark:border-emerald-800">
-                <CheckCircle2 className="w-3.5 h-3.5 text-emerald-600" />
-                <span>{language === 'ar' ? `حل وتدقيق: ${exam.solvedByAr || 'اللجنة العلمية'}` : `Solved by: ${exam.solvedByEn || 'Staff'}`}</span>
-              </span>
-            ) : (
-              <span className="px-3 py-1 rounded-xl bg-slate-200 dark:bg-slate-700 text-slate-700 dark:text-slate-300 font-bold">
-                {language === 'ar' ? 'النموذج متاح للممارسة الذاتية' : 'Self-Practice'}
-              </span>
+            {fileUrl && (
+              <button
+                type="button"
+                id="tab-exam-doc"
+                onClick={() => setActiveTab('document')}
+                className={`px-3.5 py-1.5 rounded-lg text-xs font-black flex items-center gap-1.5 transition-all cursor-pointer ${
+                  activeTab === 'document'
+                    ? 'bg-blue-600 text-white shadow-xs'
+                    : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white'
+                }`}
+              >
+                <Eye className="w-3.5 h-3.5" />
+                <span>{language === 'ar' ? '📄 ملف PDF الأصلي' : 'Original PDF'}</span>
+              </button>
             )}
           </div>
-        </div>
 
-        {/* Content Body */}
-        <div className="p-5 sm:p-6 overflow-y-auto space-y-5 flex-1 text-slate-800 dark:text-slate-200">
-          
-          {/* Header Banner on paper */}
-          <div className="p-4 rounded-2xl border border-dashed border-blue-300 dark:border-slate-700 bg-blue-50/40 dark:bg-slate-800/40 text-center space-y-1">
-            <h3 className="text-sm font-black text-blue-950 dark:text-blue-200">
-              {language === 'ar' 
-                ? `جمهورية العراق - وزارة التعليم العالي والبحث العلمي | مقرر: ${subject?.nameAr || 'السيطرة والأتمتة'}`
-                : `Higher Education Curriculum | Subject: ${subject?.nameEn || 'Control & Automation'}`}
-            </h3>
-            <p className="text-xs text-slate-500 dark:text-slate-400">
-              المرحلة {exam.stage} • العام الدراسي: {exam.academicYear} • الدرجة الكاملة: 100 درجة • الوقت الموصى به: 3 ساعات
-            </p>
-          </div>
-
-          {/* TAB 1: QUESTION PAPER */}
-          {activeTab === 'paper' && (
-            <div className="space-y-4">
-              {questions.map((q, idx) => (
-                <div
-                  key={idx}
-                  className="rounded-2xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 overflow-hidden shadow-xs hover:border-blue-300 dark:hover:border-blue-600 transition-colors"
-                >
-                  <div className="p-4 sm:p-5 flex items-center justify-between gap-3 bg-slate-50/60 dark:bg-slate-800/40 border-b border-slate-100 dark:border-slate-800 flex-wrap">
-                    <div className="flex items-center gap-2.5">
-                      <span className="w-7 h-7 rounded-xl bg-blue-600 text-white font-black text-xs flex items-center justify-center shrink-0">
-                        س{q.num}
-                      </span>
-                      <h4 className="font-black text-sm sm:text-base text-slate-900 dark:text-white">
-                        {language === 'ar' ? q.titleAr : q.titleEn}
-                      </h4>
-                    </div>
-
-                    <div className="flex items-center gap-2">
-                      <span className="px-2.5 py-0.5 rounded-lg bg-blue-100 dark:bg-blue-950/80 text-blue-800 dark:text-blue-300 font-bold text-xs border border-blue-200 dark:border-blue-900">
-                        {q.points} {language === 'ar' ? 'درجة' : 'pts'}
-                      </span>
-                    </div>
-                  </div>
-
-                  <div className="p-4 sm:p-5 text-sm sm:text-base leading-relaxed font-mono whitespace-pre-wrap text-slate-800 dark:text-slate-200 bg-white dark:bg-slate-900">
-                    {q.bodyAr}
-                  </div>
-                </div>
-              ))}
-            </div>
-          )}
-
-          {/* TAB 2: MODEL ANSWER */}
-          {activeTab === 'solution' && (
-            <div className="space-y-4">
-              <div className="p-3.5 rounded-xl bg-emerald-50 dark:bg-emerald-950/40 border border-emerald-200 dark:border-emerald-800/80 text-emerald-900 dark:text-emerald-200 text-xs font-bold flex items-center gap-2">
-                <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0" />
-                <span>
-                  {language === 'ar'
-                    ? 'الحلول النموذجية المعتمدة مدققة خطوة بخطوة مع القوانين والاشتقاقات وفق المعايير الأكاديمية.'
-                    : 'Official verified step-by-step solution key and derivations.'}
-                </span>
-              </div>
-
-              {questions.map((q, idx) => (
-                <div
-                  key={idx}
-                  className="rounded-2xl border border-emerald-200 dark:border-slate-700 bg-white dark:bg-slate-900 overflow-hidden shadow-xs"
-                >
-                  <div className="p-4 flex items-center justify-between gap-3 bg-emerald-50/70 dark:bg-emerald-950/30 border-b border-emerald-100 dark:border-slate-800">
-                    <div className="flex items-center gap-2.5">
-                      <span className="w-7 h-7 rounded-xl bg-emerald-600 text-white font-black text-xs flex items-center justify-center shrink-0">
-                        حل {q.num}
-                      </span>
-                      <h4 className="font-black text-sm text-emerald-950 dark:text-emerald-200">
-                        {language === 'ar' ? q.titleAr : q.titleEn}
-                      </h4>
-                    </div>
-                  </div>
-
-                  <div className="p-4 sm:p-5 text-xs sm:text-sm leading-relaxed font-mono whitespace-pre-wrap text-slate-800 dark:text-slate-200 bg-slate-50/50 dark:bg-slate-900/60">
-                    {q.solutionAr}
-                  </div>
-                </div>
-              ))}
-            </div>
-          )}
-        </div>
-
-        {/* Footer */}
-        <div className="p-4 sm:p-5 border-t border-slate-100 dark:border-slate-800 bg-slate-50/70 dark:bg-slate-900 flex items-center justify-between gap-3 flex-wrap">
           <div className="flex items-center gap-2">
+            {/* Font size adjuster for comfortable reading */}
+            {activeTab !== 'document' && (
+              <div className="hidden sm:flex items-center bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-lg p-0.5">
+                <button
+                  type="button"
+                  onClick={() => setFontSizeClass('text-sm')}
+                  className={`px-2 py-0.5 text-xs font-bold rounded ${fontSizeClass === 'text-sm' ? 'bg-blue-100 dark:bg-blue-900/50 text-blue-700 dark:text-blue-300' : 'text-slate-500 hover:text-slate-800'}`}
+                  title="خط صغير"
+                >
+                  A-
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setFontSizeClass('text-base')}
+                  className={`px-2 py-0.5 text-xs font-bold rounded ${fontSizeClass === 'text-base' ? 'bg-blue-100 dark:bg-blue-900/50 text-blue-700 dark:text-blue-300' : 'text-slate-500 hover:text-slate-800'}`}
+                  title="خط متوسط"
+                >
+                  A
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setFontSizeClass('text-lg')}
+                  className={`px-2 py-0.5 text-xs font-bold rounded ${fontSizeClass === 'text-lg' ? 'bg-blue-100 dark:bg-blue-900/50 text-blue-700 dark:text-blue-300' : 'text-slate-500 hover:text-slate-800'}`}
+                  title="خط كبير"
+                >
+                  A+
+                </button>
+              </div>
+            )}
+
             <button
               type="button"
               onClick={handleCopyQuestions}
-              className="px-4 py-2 rounded-xl bg-white dark:bg-slate-800 border border-slate-300 dark:border-slate-700 hover:bg-slate-100 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-200 text-xs font-bold flex items-center gap-1.5 transition-colors cursor-pointer"
+              className="px-3 py-1.5 rounded-xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 text-slate-700 dark:text-slate-300 text-xs font-bold flex items-center gap-1.5 transition-colors cursor-pointer"
+              title={language === 'ar' ? 'نسخ نص الأسئلة' : 'Copy Questions'}
             >
-              {copied ? (
+              {copiedText ? (
                 <>
                   <Check className="w-3.5 h-3.5 text-emerald-600" />
-                  <span className="text-emerald-600">{language === 'ar' ? 'تم النسخ!' : 'Copied!'}</span>
+                  <span className="text-emerald-600">{language === 'ar' ? 'تم النسخ' : 'Copied'}</span>
                 </>
               ) : (
                 <>
                   <Copy className="w-3.5 h-3.5" />
-                  <span>{language === 'ar' ? 'نسخ الأسئلة' : 'Copy Questions'}</span>
+                  <span>{language === 'ar' ? 'نسخ الأسئلة' : 'Copy'}</span>
                 </>
               )}
             </button>
@@ -336,24 +298,188 @@ export const ExamViewerModal: React.FC<ExamViewerModalProps> = ({
             <button
               type="button"
               onClick={() => window.print()}
-              className="px-3 py-2 rounded-xl bg-white dark:bg-slate-800 border border-slate-300 dark:border-slate-700 hover:bg-slate-100 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-200 text-xs font-bold flex items-center gap-1.5 transition-colors cursor-pointer"
-              title="طباعة النموذج"
+              className="hidden sm:flex items-center gap-1 px-3 py-1.5 rounded-xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 text-slate-700 dark:text-slate-300 text-xs font-bold hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors cursor-pointer"
+              title={language === 'ar' ? 'طباعة ورقة الامتحان' : 'Print'}
             >
               <Printer className="w-3.5 h-3.5" />
-              <span className="hidden sm:inline">{language === 'ar' ? 'طباعة' : 'Print'}</span>
+              <span>{language === 'ar' ? 'طباعة' : 'Print'}</span>
             </button>
-          </div>
 
-          <div className="flex items-center gap-2">
             <button
               type="button"
               onClick={handleDownload}
-              className="px-5 py-2.5 rounded-xl bg-blue-600 hover:bg-blue-700 text-white text-xs sm:text-sm font-black flex items-center gap-2 shadow-md shadow-blue-500/20 transition-all cursor-pointer"
+              className="px-3 py-1.5 rounded-xl bg-slate-200 dark:bg-slate-700 hover:bg-slate-300 dark:hover:bg-slate-600 text-slate-800 dark:text-slate-100 text-xs font-bold flex items-center gap-1.5 transition-colors cursor-pointer"
+              title={language === 'ar' ? 'تنزيل ورقة الامتحان' : 'Download'}
             >
-              <Download className="w-4 h-4" />
-              <span>{language === 'ar' ? 'تنزيل النموذج كاملاً' : 'Download Exam Paper'}</span>
+              <Download className="w-3.5 h-3.5" />
+              <span>{language === 'ar' ? 'تنزيل' : 'Download'}</span>
             </button>
           </div>
+        </div>
+
+        {/* Modal Main Body */}
+        <div className="p-4 sm:p-6 overflow-y-auto space-y-4 flex-1">
+          
+          {/* TAB 1: IN-APP QUESTIONS SHEET READER (Smooth, direct reading with NO forced download) */}
+          {activeTab === 'questions' && (
+            <div className="space-y-4 max-w-4xl mx-auto animate-fadeIn">
+              
+              {/* Official Academic Exam Header */}
+              <div className="p-4 sm:p-5 rounded-2xl bg-gradient-to-b from-blue-50/80 to-slate-50 dark:from-slate-800/80 dark:to-slate-900 border-2 border-blue-200 dark:border-slate-700 text-center space-y-2">
+                <div className="flex items-center justify-between text-[11px] font-bold text-slate-500 dark:text-slate-400 border-b border-slate-200 dark:border-slate-700 pb-2">
+                  <span>جمهورية العراق - وزارة التعليم العالي والبحث العلمي</span>
+                  <span>قسم هندسة السيطرة والأتمتة</span>
+                </div>
+
+                <div className="py-1">
+                  <h3 className="text-base sm:text-lg font-black text-slate-900 dark:text-white">
+                    {language === 'ar' ? exam.titleAr : exam.titleEn}
+                  </h3>
+                  <p className="text-xs text-blue-700 dark:text-blue-300 font-bold mt-0.5">
+                    {subject ? (language === 'ar' ? subject.nameAr : subject.nameEn) : 'المادة الدراسية'} — المرحلة {exam.stage}
+                  </p>
+                </div>
+
+                <div className="flex items-center justify-center gap-3 sm:gap-6 text-xs text-slate-600 dark:text-slate-300 flex-wrap font-medium pt-1">
+                  <span className="flex items-center gap-1">
+                    <Calendar className="w-3.5 h-3.5 text-blue-600" />
+                    <span>العام الدراسي: <strong>{exam.academicYear}</strong></span>
+                  </span>
+                  <span>•</span>
+                  <span>الدور: <strong>{examTypeLabels[exam.type]?.ar || exam.type}</strong></span>
+                  <span>•</span>
+                  <span className="flex items-center gap-1">
+                    <Clock className="w-3.5 h-3.5 text-blue-600" />
+                    <span>الوقت المخصص: <strong>3 ساعات</strong></span>
+                  </span>
+                </div>
+              </div>
+
+              {/* Exam Question Content */}
+              <div className="p-5 sm:p-6 rounded-2xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 space-y-4 shadow-xs">
+                <div className="flex items-center justify-between border-b border-slate-100 dark:border-slate-800 pb-3">
+                  <span className="text-xs font-black uppercase tracking-wider text-slate-500 dark:text-slate-400 flex items-center gap-1.5">
+                    <BookOpen className="w-4 h-4 text-blue-600" />
+                    <span>{language === 'ar' ? 'الأسئلة والمسائل الهندسية' : 'Questions & Engineering Problems'}</span>
+                  </span>
+
+                  {fileUrl && (
+                    <button
+                      type="button"
+                      onClick={() => setActiveTab('document')}
+                      className="text-xs font-bold text-blue-600 dark:text-blue-400 hover:underline flex items-center gap-1 cursor-pointer"
+                    >
+                      <Eye className="w-3.5 h-3.5" />
+                      <span>{language === 'ar' ? 'عرض الوثيقة الأصلية المرفقة (PDF)' : 'View Attached PDF Document'}</span>
+                    </button>
+                  )}
+                </div>
+
+                <div className={`${fontSizeClass} leading-relaxed text-slate-800 dark:text-slate-200 whitespace-pre-line font-medium space-y-2`}>
+                  {fullQuestionsText}
+                </div>
+              </div>
+
+              {/* Solved Status Callout */}
+              {exam.solved && (
+                <div className="p-4 rounded-2xl bg-emerald-50 dark:bg-emerald-950/40 border border-emerald-200 dark:border-emerald-800 flex items-center justify-between gap-3 flex-wrap">
+                  <div className="flex items-center gap-2.5">
+                    <CheckCircle className="w-5 h-5 text-emerald-600 shrink-0" />
+                    <div className="text-xs">
+                      <span className="font-black text-emerald-900 dark:text-emerald-200 block">
+                        {language === 'ar' ? 'الحل النموذجي المعتمد متوفر لهذا النموذج' : 'Model Answer Available'}
+                      </span>
+                      <span className="text-emerald-700 dark:text-emerald-300">
+                        {language === 'ar' ? `تدقيق وحل: ${exam.solvedByAr || 'اللجنة العلمية'}` : `Verified by: ${exam.solvedByEn || exam.solvedByAr}`}
+                      </span>
+                    </div>
+                  </div>
+
+                  <button
+                    type="button"
+                    onClick={() => setActiveTab('solution')}
+                    className="px-3.5 py-1.5 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-black transition-colors cursor-pointer shadow-xs flex items-center gap-1.5"
+                  >
+                    <CheckCircle2 className="w-3.5 h-3.5" />
+                    <span>{language === 'ar' ? 'الانتقال إلى الحل النموذجي' : 'View Solution'}</span>
+                  </button>
+                </div>
+              )}
+            </div>
+          )}
+
+          {/* TAB 2: MODEL SOLUTION (Step-by-step verified engineering answer key) */}
+          {activeTab === 'solution' && (
+            <div className="space-y-4 max-w-4xl mx-auto animate-fadeIn">
+              <div className="p-4 sm:p-5 rounded-2xl bg-emerald-50/80 dark:bg-emerald-950/50 border border-emerald-200 dark:border-emerald-800 flex items-center justify-between gap-3 flex-wrap">
+                <div className="flex items-center gap-3">
+                  <CheckCircle2 className="w-6 h-6 text-emerald-600 shrink-0" />
+                  <div>
+                    <h3 className="text-sm font-black text-emerald-950 dark:text-emerald-100">
+                      {language === 'ar' ? 'الحل النموذجي المعتمد والتدقيق الهندسي' : 'Verified Engineering Model Solution'}
+                    </h3>
+                    <p className="text-xs text-emerald-700 dark:text-emerald-300 mt-0.5">
+                      {language === 'ar' ? `إعداد وتدقيق: ${exam.solvedByAr || 'اللجنة العلمية وقسم السيطرة'}` : `Reviewed by: ${exam.solvedByEn || exam.solvedByAr || 'Department'}`}
+                    </p>
+                  </div>
+                </div>
+
+                <button
+                  type="button"
+                  onClick={() => setActiveTab('questions')}
+                  className="px-3 py-1.5 rounded-xl bg-white dark:bg-slate-900 border border-emerald-300 dark:border-emerald-700 text-emerald-800 dark:text-emerald-200 text-xs font-bold hover:bg-emerald-50 transition-colors cursor-pointer"
+                >
+                  {language === 'ar' ? 'العودة لورقة الأسئلة' : 'Back to Questions'}
+                </button>
+              </div>
+
+              <div className="p-5 sm:p-6 rounded-2xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 space-y-4 shadow-xs">
+                <div className={`${fontSizeClass} leading-relaxed text-slate-800 dark:text-slate-200 whitespace-pre-line font-medium`}>
+                  {fullSolutionText}
+                </div>
+              </div>
+            </div>
+          )}
+
+          {/* TAB 3: ORIGINAL PDF EMBEDDED VIEWER (Direct in-browser reading without download) */}
+          {activeTab === 'document' && fileUrl && (
+            <div className="space-y-3 animate-fadeIn">
+              <div className="flex items-center justify-between bg-slate-50 dark:bg-slate-800/80 p-3 rounded-2xl border border-slate-200 dark:border-slate-700 flex-wrap gap-2 text-xs">
+                <div className="flex items-center gap-2 font-bold text-slate-800 dark:text-slate-200">
+                  <FileText className="w-4 h-4 text-blue-600" />
+                  <span>{exam.titleAr}</span>
+                  <span className="text-slate-400 font-mono">({exam.fileSize})</span>
+                </div>
+
+                <button
+                  type="button"
+                  onClick={() => {
+                    const target = resolvedBlobUrl || fileUrl;
+                    if (target) window.open(target, '_blank');
+                  }}
+                  className="px-3 py-1.5 rounded-xl bg-white dark:bg-slate-900 border border-slate-300 dark:border-slate-600 text-slate-700 dark:text-slate-200 font-bold flex items-center gap-1.5 transition-colors cursor-pointer"
+                >
+                  <Maximize2 className="w-3.5 h-3.5" />
+                  <span>{language === 'ar' ? 'فتح بملء الشاشة' : 'Full Screen'}</span>
+                </button>
+              </div>
+
+              <div className="w-full h-[65vh] rounded-2xl overflow-hidden border border-slate-300 dark:border-slate-700 bg-slate-100 dark:bg-slate-800 shadow-inner relative">
+                {isLoadingFile && (
+                  <div className="absolute inset-0 bg-slate-900/40 backdrop-blur-xs flex items-center justify-center z-10 text-white font-bold text-xs gap-2">
+                    <span className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" />
+                    <span>{language === 'ar' ? 'جارٍ تحميل ورقة الامتحان من السحابة...' : 'Loading exam paper...'}</span>
+                  </div>
+                )}
+                <iframe
+                  src={`${resolvedBlobUrl || fileUrl}#view=FitH`}
+                  title={exam.titleAr}
+                  className="w-full h-full border-0"
+                />
+              </div>
+            </div>
+          )}
+
         </div>
 
       </div>

@@ -127,10 +127,11 @@ export const SummariesView: React.FC<SummariesViewProps> = ({
               <div
                 key={summary.id}
                 id={`summary-card-${summary.id}`}
-                className="bg-white dark:bg-slate-900 rounded-2xl border border-blue-100 dark:border-slate-800 hover:border-blue-300 dark:hover:border-blue-600 shadow-xs hover:shadow-md transition-all p-5 sm:p-6 flex flex-col justify-between group"
+                onClick={() => onSelectSummaryToView?.(summary)}
+                className="bg-white dark:bg-slate-900 rounded-3xl border border-blue-100 dark:border-slate-800 hover:border-blue-400 dark:hover:border-blue-500 shadow-xs hover:shadow-lg transition-all p-5 sm:p-6 flex flex-col justify-between group cursor-pointer"
               >
                 <div className="space-y-3.5">
-                  <div className="flex items-center justify-between gap-2">
+                  <div className="flex items-center justify-between gap-2" onClick={(e) => e.stopPropagation()}>
                     <span className="text-[11px] font-bold px-2.5 py-0.5 rounded-full bg-blue-50 dark:bg-blue-950/70 text-blue-700 dark:text-blue-300 border border-blue-100 dark:border-blue-900">
                       {subject ? (language === 'ar' ? subject.nameAr : subject.nameEn) : 'هندسة السيطرة'} (المرحلة {summary.stage})
                     </span>
@@ -143,7 +144,10 @@ export const SummariesView: React.FC<SummariesViewProps> = ({
                         <button
                           type="button"
                           id={`btn-edit-sum-${summary.id}`}
-                          onClick={() => onEditSummary(summary)}
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            onEditSummary(summary);
+                          }}
                           className="p-1 rounded-lg text-slate-400 hover:text-amber-600 hover:bg-amber-50 dark:hover:bg-amber-950/40 transition-colors cursor-pointer"
                           title={language === 'ar' ? 'تعديل هذا الملخص' : 'Edit Summary'}
                         >
@@ -152,8 +156,12 @@ export const SummariesView: React.FC<SummariesViewProps> = ({
                       )}
                       {isAdminUnlocked && onDeleteSummary && (
                         <button
-                          onClick={() => onDeleteSummary(summary.id)}
-                          className="p-1 rounded-lg text-slate-400 hover:text-red-600 hover:bg-red-50 dark:hover:bg-red-950/40 transition-colors"
+                          type="button"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            onDeleteSummary(summary.id);
+                          }}
+                          className="p-1 rounded-lg text-slate-400 hover:text-red-600 hover:bg-red-50 dark:hover:bg-red-950/40 transition-colors cursor-pointer"
                           title={language === 'ar' ? 'حذف الملخص' : 'Delete'}
                         >
                           <Trash2 className="w-3.5 h-3.5" />
@@ -163,31 +171,33 @@ export const SummariesView: React.FC<SummariesViewProps> = ({
                   </div>
 
                   <div>
-                    <h3 
-                      onClick={() => onSelectSummaryToView?.(summary)}
-                      className="text-base sm:text-lg font-black text-blue-950 dark:text-white group-hover:text-blue-600 dark:group-hover:text-blue-400 transition-colors cursor-pointer"
-                    >
+                    <h3 className="text-base sm:text-lg font-black text-blue-950 dark:text-white group-hover:text-blue-600 dark:group-hover:text-blue-400 transition-colors">
                       {language === 'ar' ? summary.titleAr : summary.titleEn}
                     </h3>
-                    <p className="text-xs sm:text-sm text-slate-600 dark:text-slate-300 mt-1 leading-relaxed">
+                    <p className="text-xs sm:text-sm text-slate-600 dark:text-slate-300 mt-1.5 leading-relaxed line-clamp-3">
                       {language === 'ar' ? summary.descriptionAr : summary.descriptionEn}
                     </p>
                   </div>
 
                   {/* Tags */}
-                  <div className="flex items-center gap-1.5 flex-wrap pt-1">
-                    {(language === 'ar' ? summary.tagsAr : summary.tagsEn).map((tag, idx) => (
-                      <span
-                        key={idx}
-                        className="text-[10px] font-bold px-2 py-0.5 rounded-md bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-400 border border-slate-200 dark:border-slate-700"
-                      >
-                        #{tag}
-                      </span>
-                    ))}
-                  </div>
+                  {summary.tagsAr && summary.tagsAr.length > 0 && (
+                    <div className="flex items-center gap-1.5 flex-wrap pt-1">
+                      {summary.tagsAr.map((tag, idx) => (
+                        <span
+                          key={idx}
+                          className="text-[10px] font-bold px-2 py-0.5 rounded-md bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-400 border border-slate-200 dark:border-slate-700"
+                        >
+                          #{tag}
+                        </span>
+                      ))}
+                    </div>
+                  )}
                 </div>
 
-                <div className="border-t border-slate-100 dark:border-slate-800 pt-4 mt-4 flex items-center justify-between text-xs text-slate-500 dark:text-slate-400 gap-2 flex-wrap">
+                <div 
+                  className="border-t border-slate-100 dark:border-slate-800 pt-4 mt-4 flex items-center justify-between text-xs text-slate-500 dark:text-slate-400 gap-2 flex-wrap"
+                  onClick={(e) => e.stopPropagation()}
+                >
                   <div className="flex items-center gap-1.5">
                     <User className="w-3.5 h-3.5 text-blue-600 dark:text-blue-400" />
                     <span>{language === 'ar' ? summary.authorAr : summary.authorEn}</span>
@@ -199,11 +209,11 @@ export const SummariesView: React.FC<SummariesViewProps> = ({
                         type="button"
                         id={`btn-view-sum-${summary.id}`}
                         onClick={() => onSelectSummaryToView(summary)}
-                        className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-blue-600 hover:bg-blue-700 text-white font-bold transition-all shadow-xs cursor-pointer text-xs"
-                        title={language === 'ar' ? 'معاينة وقراءة الملخص' : 'Preview & Read'}
+                        className="flex items-center gap-1.5 px-3.5 py-2 rounded-xl bg-blue-600 hover:bg-blue-700 text-white font-black transition-all shadow-sm shadow-blue-500/25 cursor-pointer text-xs"
+                        title={language === 'ar' ? 'عرض وقراءة الملخص مباشرة' : 'Open & Read'}
                       >
-                        <Eye className="w-3.5 h-3.5" />
-                        <span>{language === 'ar' ? 'معاينة وقراءة' : 'Preview & Read'}</span>
+                        <BookOpen className="w-3.5 h-3.5" />
+                        <span>{language === 'ar' ? 'عرض وقراءة الملخص' : 'Open & Read'}</span>
                       </button>
                     )}
 
@@ -228,11 +238,10 @@ export const SummariesView: React.FC<SummariesViewProps> = ({
                         a.click();
                         URL.revokeObjectURL(url);
                       }}
-                      className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-xl bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-300 font-bold transition-colors cursor-pointer"
+                      className="p-2 rounded-xl bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-300 font-bold transition-colors cursor-pointer"
                       title={language === 'ar' ? 'تنزيل الملخص' : 'Download'}
                     >
                       <Download className="w-3.5 h-3.5" />
-                      <span className="hidden sm:inline">{language === 'ar' ? 'تنزيل' : 'Download'}</span>
                     </button>
                   </div>
                 </div>

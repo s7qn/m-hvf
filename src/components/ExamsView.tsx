@@ -12,7 +12,8 @@ import {
   Lock,
   Trash2,
   Eye,
-  Edit3
+  Edit3,
+  FileText
 } from 'lucide-react';
 import { ExamQuestionPaper, Subject, Stage, Language } from '../types';
 import { TRANSLATIONS } from '../data/translations';
@@ -161,10 +162,11 @@ export const ExamsView: React.FC<ExamsViewProps> = ({
               <div
                 key={exam.id}
                 id={`exam-card-${exam.id}`}
-                className="bg-white dark:bg-slate-900 rounded-2xl border border-blue-100 dark:border-slate-800 hover:border-blue-300 dark:hover:border-blue-600 shadow-xs hover:shadow-md transition-all p-5 sm:p-6 flex flex-col justify-between group"
+                onClick={() => onSelectExamToView?.(exam)}
+                className="bg-white dark:bg-slate-900 rounded-3xl border border-blue-100 dark:border-slate-800 hover:border-blue-400 dark:hover:border-blue-500 shadow-xs hover:shadow-lg transition-all p-5 sm:p-6 flex flex-col justify-between group cursor-pointer"
               >
                 <div className="space-y-3.5">
-                  <div className="flex items-center justify-between gap-2">
+                  <div className="flex items-center justify-between gap-2" onClick={(e) => e.stopPropagation()}>
                     <div className="flex items-center gap-2">
                       <span className="text-[11px] font-bold px-2.5 py-0.5 rounded-full bg-blue-50 dark:bg-blue-950/70 text-blue-700 dark:text-blue-300 border border-blue-100 dark:border-blue-900">
                         {subject ? (language === 'ar' ? subject.nameAr : subject.nameEn) : 'المادة الدراسية'}
@@ -185,7 +187,10 @@ export const ExamsView: React.FC<ExamsViewProps> = ({
                         <button
                           type="button"
                           id={`btn-edit-exam-${exam.id}`}
-                          onClick={() => onEditExam(exam)}
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            onEditExam(exam);
+                          }}
                           className="p-1 rounded-lg text-slate-400 hover:text-amber-600 hover:bg-amber-50 dark:hover:bg-amber-950/40 transition-colors cursor-pointer"
                           title={language === 'ar' ? 'تعديل هذا النموذج' : 'Edit Exam'}
                         >
@@ -194,8 +199,12 @@ export const ExamsView: React.FC<ExamsViewProps> = ({
                       )}
                       {isAdminUnlocked && onDeleteExam && (
                         <button
-                          onClick={() => onDeleteExam(exam.id)}
-                          className="p-1 rounded-lg text-slate-400 hover:text-red-600 hover:bg-red-50 dark:hover:bg-red-950/40 transition-colors"
+                          type="button"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            onDeleteExam(exam.id);
+                          }}
+                          className="p-1 rounded-lg text-slate-400 hover:text-red-600 hover:bg-red-50 dark:hover:bg-red-950/40 transition-colors cursor-pointer"
                           title={language === 'ar' ? 'حذف النموذج' : 'Delete'}
                         >
                           <Trash2 className="w-3.5 h-3.5" />
@@ -205,10 +214,7 @@ export const ExamsView: React.FC<ExamsViewProps> = ({
                   </div>
 
                   <div>
-                    <h3 
-                      onClick={() => onSelectExamToView?.(exam)}
-                      className="text-base sm:text-lg font-black text-blue-950 dark:text-white group-hover:text-blue-600 dark:group-hover:text-blue-400 transition-colors cursor-pointer"
-                    >
+                    <h3 className="text-base sm:text-lg font-black text-blue-950 dark:text-white group-hover:text-blue-600 dark:group-hover:text-blue-400 transition-colors">
                       {language === 'ar' ? exam.titleAr : exam.titleEn}
                     </h3>
                     <div className="flex items-center gap-2 text-xs text-slate-500 dark:text-slate-400 mt-1">
@@ -227,7 +233,10 @@ export const ExamsView: React.FC<ExamsViewProps> = ({
                   )}
                 </div>
 
-                <div className="border-t border-slate-100 dark:border-slate-800 pt-4 mt-4 flex items-center justify-between text-xs text-slate-500 dark:text-slate-400 gap-2 flex-wrap">
+                <div 
+                  className="border-t border-slate-100 dark:border-slate-800 pt-4 mt-4 flex items-center justify-between text-xs text-slate-500 dark:text-slate-400 gap-2 flex-wrap"
+                  onClick={(e) => e.stopPropagation()}
+                >
                   <span className="font-mono text-[11px] text-slate-400 dark:text-slate-500">
                     PDF Document
                   </span>
@@ -238,11 +247,11 @@ export const ExamsView: React.FC<ExamsViewProps> = ({
                         type="button"
                         id={`btn-view-exam-${exam.id}`}
                         onClick={() => onSelectExamToView(exam)}
-                        className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-blue-600 hover:bg-blue-700 text-white font-bold transition-all shadow-xs cursor-pointer text-xs"
-                        title={language === 'ar' ? 'معاينة النموذج والأسئلة والحل' : 'Preview Exam'}
+                        className="flex items-center gap-1.5 px-3.5 py-2 rounded-xl bg-blue-600 hover:bg-blue-700 text-white font-black transition-all shadow-sm shadow-blue-500/25 cursor-pointer text-xs"
+                        title={language === 'ar' ? 'عرض ودراسة نموذج الأسئلة مباشرة' : 'Open Exam Paper'}
                       >
-                        <Eye className="w-3.5 h-3.5" />
-                        <span>{language === 'ar' ? 'معاينة النموذج' : 'Preview'}</span>
+                        <FileText className="w-3.5 h-3.5" />
+                        <span>{language === 'ar' ? 'عرض نموذج الأسئلة' : 'Open Exam'}</span>
                       </button>
                     )}
 
@@ -250,9 +259,10 @@ export const ExamsView: React.FC<ExamsViewProps> = ({
                       type="button"
                       id={`btn-dl-exam-${exam.id}`}
                       onClick={() => {
-                        if (exam.downloadUrl) {
+                        const fileUrl = exam.downloadUrl || (exam as any).fileUrl;
+                        if (fileUrl) {
                           const a = document.createElement('a');
-                          a.href = exam.downloadUrl;
+                          a.href = fileUrl;
                           a.download = `${exam.titleAr}.pdf`;
                           a.target = '_blank';
                           a.click();
@@ -267,11 +277,10 @@ export const ExamsView: React.FC<ExamsViewProps> = ({
                         a.click();
                         URL.revokeObjectURL(url);
                       }}
-                      className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-xl bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-300 font-bold transition-colors cursor-pointer"
+                      className="p-2 rounded-xl bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-300 font-bold transition-colors cursor-pointer"
                       title={language === 'ar' ? 'تنزيل النموذج' : 'Download'}
                     >
                       <Download className="w-3.5 h-3.5" />
-                      <span className="hidden sm:inline">{language === 'ar' ? 'تنزيل' : 'Download'}</span>
                     </button>
                   </div>
                 </div>
