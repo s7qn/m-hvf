@@ -19,7 +19,9 @@ import {
   HelpCircle,
   Tag,
   FlaskConical,
-  Building2
+  Building2,
+  Lock,
+  ShieldCheck
 } from 'lucide-react';
 import { Lecture, Summary, ExamQuestionPaper, ScheduleItem, Subject, Stage, Language } from '../types';
 import { uploadSharedFile } from '../services/contentApi';
@@ -32,6 +34,7 @@ interface EditContentModalProps {
   subjects: Subject[];
   language: Language;
   onClose: () => void;
+  isAdminUnlocked?: boolean;
   onSaveLecture?: (updated: Lecture) => Promise<any> | void;
   onSaveSummary?: (updated: Summary) => Promise<any> | void;
   onSaveExam?: (updated: ExamQuestionPaper) => Promise<any> | void;
@@ -52,6 +55,7 @@ export const EditContentModal: React.FC<EditContentModalProps> = ({
   subjects,
   language,
   onClose,
+  isAdminUnlocked = false,
   onSaveLecture,
   onSaveSummary,
   onSaveExam,
@@ -145,6 +149,10 @@ export const EditContentModal: React.FC<EditContentModalProps> = ({
   // Main Submit Handler
   const handleSave = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (!isAdminUnlocked) {
+      setErrorMsg(language === 'ar' ? 'عذراً، صلاحية تعديل وحفظ المحتوى مخصصة للمشرف فقط' : 'Unauthorized: Only supervisor can edit content');
+      return;
+    }
     setIsSaving(true);
     setErrorMsg('');
 
@@ -353,7 +361,30 @@ export const EditContentModal: React.FC<EditContentModalProps> = ({
 
         {/* Body */}
         <div className="p-5 sm:p-6 overflow-y-auto space-y-5 flex-1">
-          {activeTab === 'form' ? (
+          {!isAdminUnlocked ? (
+            <div className="py-12 text-center space-y-4 max-w-md mx-auto my-auto animate-fadeIn">
+              <div className="w-16 h-16 rounded-2xl bg-amber-50 dark:bg-amber-950/50 border border-amber-200 dark:border-amber-800 text-amber-600 dark:text-amber-400 flex items-center justify-center mx-auto shadow-sm">
+                <Lock className="w-8 h-8" />
+              </div>
+              <div className="space-y-2">
+                <h3 className="text-lg font-black text-slate-900 dark:text-white">
+                  {language === 'ar' ? 'تعديل المحتوى محمي ومخصص للمشرف فقط' : 'Protected Supervisor Area'}
+                </h3>
+                <p className="text-xs text-slate-500 dark:text-slate-400 leading-relaxed">
+                  {language === 'ar'
+                    ? 'لا يمكنك تعديل أو حذف محتوى هذه الخانات. خاصية التعديل محصورة بمشرف المنصة فقط بعد فتح القفل بالرمز السري.'
+                    : 'Editing is restricted to the platform supervisor. Please enter supervisor mode first.'}
+                </p>
+              </div>
+              <button
+                type="button"
+                onClick={onClose}
+                className="px-6 py-2.5 rounded-xl bg-blue-600 hover:bg-blue-700 text-white text-xs font-bold transition-all cursor-pointer shadow-sm"
+              >
+                {language === 'ar' ? 'الرجوع للمنصة' : 'Back to Platform'}
+              </button>
+            </div>
+          ) : activeTab === 'form' ? (
             <form id="edit-content-form" onSubmit={handleSave} className="space-y-4">
               
               {/* Common Subject & Stage Row */}
@@ -916,25 +947,27 @@ export const EditContentModal: React.FC<EditContentModalProps> = ({
         </div>
 
         {/* Modal Footer */}
-        <div className="p-4 sm:p-5 border-t border-slate-100 dark:border-slate-800 bg-slate-50/70 dark:bg-slate-900 flex items-center justify-between gap-3">
-          <button
-            type="button"
-            onClick={onClose}
-            className="px-5 py-2.5 rounded-xl bg-slate-200 dark:bg-slate-800 hover:bg-slate-300 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-200 text-xs font-bold transition-colors cursor-pointer"
-          >
-            {language === 'ar' ? 'إلغاء' : 'Cancel'}
-          </button>
+        {isAdminUnlocked && (
+          <div className="p-4 sm:p-5 border-t border-slate-100 dark:border-slate-800 bg-slate-50/70 dark:bg-slate-900 flex items-center justify-between gap-3">
+            <button
+              type="button"
+              onClick={onClose}
+              className="px-5 py-2.5 rounded-xl bg-slate-200 dark:bg-slate-800 hover:bg-slate-300 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-200 text-xs font-bold transition-colors cursor-pointer"
+            >
+              {language === 'ar' ? 'إلغاء' : 'Cancel'}
+            </button>
 
-          <button
-            type="submit"
-            form="edit-content-form"
-            disabled={isSaving}
-            className="px-6 py-2.5 rounded-xl bg-blue-600 hover:bg-blue-700 text-white text-xs sm:text-sm font-black flex items-center gap-2 shadow-md shadow-blue-500/20 transition-all cursor-pointer disabled:opacity-50"
-          >
-            <Save className="w-4 h-4" />
-            <span>{isSaving ? (language === 'ar' ? 'جارٍ الحفظ في السحابة...' : 'Saving to cloud...') : (language === 'ar' ? 'حفظ وتحديث التعديلات سحابياً' : 'Save & Publish Changes')}</span>
-          </button>
-        </div>
+            <button
+              type="submit"
+              form="edit-content-form"
+              disabled={isSaving}
+              className="px-6 py-2.5 rounded-xl bg-blue-600 hover:bg-blue-700 text-white text-xs sm:text-sm font-black flex items-center gap-2 shadow-md shadow-blue-500/20 transition-all cursor-pointer disabled:opacity-50"
+            >
+              <Save className="w-4 h-4" />
+              <span>{isSaving ? (language === 'ar' ? 'جارٍ الحفظ في السحابة...' : 'Saving to cloud...') : (language === 'ar' ? 'حفظ وتحديث التعديلات سحابياً' : 'Save & Publish Changes')}</span>
+            </button>
+          </div>
+        )}
 
       </div>
     </div>

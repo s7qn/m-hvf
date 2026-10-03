@@ -44,6 +44,7 @@ interface AdminAddModalProps {
   language: Language;
   isAdminUnlocked: boolean;
   onUnlockAdmin: () => void;
+  onLockAdmin?: () => void;
   onClose: () => void;
   onAddLecture: (newLecture: Lecture) => Promise<{ success: boolean; error?: string }> | void;
   onAddSummary?: (newSummary: Summary) => void;
@@ -66,6 +67,7 @@ export const AdminAddModal: React.FC<AdminAddModalProps> = ({
   language,
   isAdminUnlocked,
   onUnlockAdmin,
+  onLockAdmin,
   onClose,
   onAddLecture,
   onAddSummary,
@@ -789,13 +791,31 @@ export const AdminAddModal: React.FC<AdminAddModalProps> = ({
             </div>
           </div>
 
-          <button
-            id="btn-close-admin-modal"
-            onClick={onClose}
-            className="p-2 rounded-xl bg-white/10 hover:bg-white/20 text-white text-xs transition-colors cursor-pointer"
-          >
-            <X className="w-5 h-5" />
-          </button>
+          <div className="flex items-center gap-2">
+            {isAdminUnlocked && onLockAdmin && (
+              <button
+                type="button"
+                id="btn-lock-admin-session"
+                onClick={() => {
+                  onLockAdmin();
+                  onClose();
+                }}
+                className="px-2.5 py-1.5 rounded-xl bg-red-500/20 hover:bg-red-500/30 text-red-200 border border-red-500/30 text-xs font-bold transition-all flex items-center gap-1.5 cursor-pointer shadow-xs"
+                title={language === 'ar' ? 'قفل وضع المشرف والعودة لوضع الطالب' : 'Lock supervisor mode'}
+              >
+                <Lock className="w-3.5 h-3.5 text-red-300" />
+                <span className="hidden sm:inline">{language === 'ar' ? 'قفل وضع المشرف' : 'Lock Admin'}</span>
+              </button>
+            )}
+
+            <button
+              id="btn-close-admin-modal"
+              onClick={onClose}
+              className="p-2 rounded-xl bg-white/10 hover:bg-white/20 text-white text-xs transition-colors cursor-pointer"
+            >
+              <X className="w-5 h-5" />
+            </button>
+          </div>
         </div>
 
         {/* Modal Body */}

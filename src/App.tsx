@@ -174,7 +174,9 @@ export default function App() {
       if (saved) {
         const parsed = JSON.parse(saved);
         if (Array.isArray(parsed)) {
-          return parsed;
+          const cleaned = parsed.filter(s => s && s.id && s.id !== 'sum-ctrl-stability' && s.id !== 'sum-digital-logic-kmaps');
+          localStorage.setItem('saytara_summaries', JSON.stringify(cleaned));
+          return cleaned;
         }
       }
     } catch {
@@ -189,7 +191,11 @@ export default function App() {
       const saved = localStorage.getItem('saytara_exams');
       if (saved) {
         const parsed = JSON.parse(saved);
-        if (Array.isArray(parsed)) return parsed;
+        if (Array.isArray(parsed)) {
+          const cleaned = parsed.filter(e => e && e.id && e.id !== 'exam-control-final-2024' && e.id !== 'exam-logic-midterm-2024');
+          localStorage.setItem('saytara_exams', JSON.stringify(cleaned));
+          return cleaned;
+        }
       }
     } catch {
       // fallback
@@ -366,13 +372,15 @@ export default function App() {
         });
       }
 
-      // 2. Sync Summaries
+      // 2. Sync Summaries (Excluding legacy sample summaries)
       if (Array.isArray(data.summaries)) {
         setSummaries(() => {
           const map = new Map<string, Summary>();
           INITIAL_SUMMARIES.forEach(s => map.set(s.id, s));
           data.summaries.forEach(s => {
-            if (s && s.id) map.set(s.id, s);
+            if (s && s.id && s.id !== 'sum-ctrl-stability' && s.id !== 'sum-digital-logic-kmaps') {
+              map.set(s.id, s);
+            }
           });
           const finalSummaries = Array.from(map.values());
           localStorage.setItem('saytara_summaries', JSON.stringify(finalSummaries));
@@ -380,13 +388,15 @@ export default function App() {
         });
       }
 
-      // 3. Sync Exams
+      // 3. Sync Exams (Excluding legacy sample exam questions)
       if (Array.isArray(data.exams)) {
         setExams(() => {
           const map = new Map<string, ExamQuestionPaper>();
           INITIAL_EXAMS.forEach(e => map.set(e.id, e));
           data.exams.forEach(e => {
-            if (e && e.id) map.set(e.id, e);
+            if (e && e.id && e.id !== 'exam-control-final-2024' && e.id !== 'exam-logic-midterm-2024') {
+              map.set(e.id, e);
+            }
           });
           const finalExams = Array.from(map.values());
           localStorage.setItem('saytara_exams', JSON.stringify(finalExams));
@@ -407,6 +417,12 @@ export default function App() {
   useEffect(() => {
     // Test initial connection to Firestore
     initFirestoreConnection().catch(() => {});
+
+    // Ensure any legacy pre-filled summaries and exams are purged permanently
+    deleteSharedSummary('sum-ctrl-stability').catch(() => {});
+    deleteSharedSummary('sum-digital-logic-kmaps').catch(() => {});
+    deleteSharedExam('exam-control-final-2024').catch(() => {});
+    deleteSharedExam('exam-logic-midterm-2024').catch(() => {});
 
     // Initial fetch on mount
     syncContentFromServer();
@@ -464,7 +480,9 @@ export default function App() {
           const map = new Map<string, Summary>();
           INITIAL_SUMMARIES.forEach(s => map.set(s.id, s));
           fsSummaries.forEach(s => {
-            if (s && s.id) map.set(s.id, s);
+            if (s && s.id && s.id !== 'sum-ctrl-stability' && s.id !== 'sum-digital-logic-kmaps') {
+              map.set(s.id, s);
+            }
           });
           const finalSummaries = Array.from(map.values());
           localStorage.setItem('saytara_summaries', JSON.stringify(finalSummaries));
@@ -477,7 +495,9 @@ export default function App() {
           const map = new Map<string, ExamQuestionPaper>();
           INITIAL_EXAMS.forEach(e => map.set(e.id, e));
           fsExams.forEach(e => {
-            if (e && e.id) map.set(e.id, e);
+            if (e && e.id && e.id !== 'exam-control-final-2024' && e.id !== 'exam-logic-midterm-2024') {
+              map.set(e.id, e);
+            }
           });
           const finalExams = Array.from(map.values());
           localStorage.setItem('saytara_exams', JSON.stringify(finalExams));
@@ -540,6 +560,12 @@ export default function App() {
   };
 
   const handleUpdateLecture = async (updatedLecture: Lecture): Promise<{ success: boolean; error?: string }> => {
+    if (!isAdminUnlocked) {
+      return {
+        success: false,
+        error: language === 'ar' ? 'عذراً، صلاحية التعديل محصورة بالمشرف فقط' : 'Unauthorized: Only supervisor can edit lectures'
+      };
+    }
     const saveResult = await saveSharedLecture(updatedLecture);
     if (!saveResult.success) {
       console.error('[UpdateLecture Error] Firestore write failed:', saveResult.error);
@@ -561,6 +587,10 @@ export default function App() {
   };
 
   const handleDeleteLecture = async (lectureId: string) => {
+    if (!isAdminUnlocked) {
+      console.warn('[Security] Unauthorized attempt to delete lecture');
+      return;
+    }
     // 1. Immediately record in deletedLectureIds state and localStorage so it never resurrects!
     setDeletedLectureIds(prev => {
       const updated = Array.from(new Set([...prev, lectureId]));
@@ -588,6 +618,7 @@ export default function App() {
   };
 
   const handleAddSummary = (newSummary: Summary) => {
+    if (!isAdminUnlocked) return;
     setSummaries(prev => {
       const updated = [newSummary, ...prev.filter(s => s.id !== newSummary.id)];
       localStorage.setItem('saytara_summaries', JSON.stringify(updated));
@@ -597,6 +628,10 @@ export default function App() {
   };
 
   const handleUpdateSummary = async (updatedSummary: Summary) => {
+    if (!isAdminUnlocked) {
+      console.warn('[Security] Unauthorized attempt to update summary');
+      return;
+    }
     setSummaries(prev => {
       const exists = prev.some(s => s.id === updatedSummary.id);
       const updated = exists ? prev.map(s => s.id === updatedSummary.id ? updatedSummary : s) : [updatedSummary, ...prev];
@@ -608,6 +643,10 @@ export default function App() {
   };
 
   const handleDeleteSummary = (summaryId: string) => {
+    if (!isAdminUnlocked) {
+      console.warn('[Security] Unauthorized attempt to delete summary');
+      return;
+    }
     setSummaries(prev => {
       const updated = prev.filter(s => s.id !== summaryId);
       localStorage.setItem('saytara_summaries', JSON.stringify(updated));
@@ -617,6 +656,7 @@ export default function App() {
   };
 
   const handleAddScheduleItem = (newItem: ScheduleItem) => {
+    if (!isAdminUnlocked) return;
     setSchedule(prev => {
       const updated = [newItem, ...prev.filter(item => item.id !== newItem.id)];
       localStorage.setItem('saytara_schedule', JSON.stringify(updated));
@@ -626,6 +666,10 @@ export default function App() {
   };
 
   const handleUpdateScheduleItem = async (updatedItem: ScheduleItem) => {
+    if (!isAdminUnlocked) {
+      console.warn('[Security] Unauthorized attempt to update schedule item');
+      return;
+    }
     setSchedule(prev => {
       const exists = prev.some(item => item.id === updatedItem.id);
       const updated = exists ? prev.map(item => item.id === updatedItem.id ? updatedItem : item) : [updatedItem, ...prev];
@@ -637,6 +681,10 @@ export default function App() {
   };
 
   const handleDeleteScheduleItem = (itemId: string) => {
+    if (!isAdminUnlocked) {
+      console.warn('[Security] Unauthorized attempt to delete schedule item');
+      return;
+    }
     setSchedule(prev => {
       const updated = prev.filter(s => s.id !== itemId);
       localStorage.setItem('saytara_schedule', JSON.stringify(updated));
@@ -646,12 +694,14 @@ export default function App() {
   };
 
   const handleResetSchedule = () => {
+    if (!isAdminUnlocked) return;
     setSchedule(INITIAL_SCHEDULE);
     localStorage.setItem('saytara_schedule', JSON.stringify(INITIAL_SCHEDULE));
     resetSharedSchedule().catch(err => console.error(err));
   };
 
   const handleAddExam = (newExam: ExamQuestionPaper) => {
+    if (!isAdminUnlocked) return;
     setExams(prev => {
       const updated = [newExam, ...prev.filter(e => e.id !== newExam.id)];
       localStorage.setItem('saytara_exams', JSON.stringify(updated));
@@ -661,6 +711,10 @@ export default function App() {
   };
 
   const handleUpdateExam = async (updatedExam: ExamQuestionPaper) => {
+    if (!isAdminUnlocked) {
+      console.warn('[Security] Unauthorized attempt to update exam');
+      return;
+    }
     setExams(prev => {
       const exists = prev.some(e => e.id === updatedExam.id);
       const updated = exists ? prev.map(e => e.id === updatedExam.id ? updatedExam : e) : [updatedExam, ...prev];
@@ -672,6 +726,10 @@ export default function App() {
   };
 
   const handleDeleteExam = (examId: string) => {
+    if (!isAdminUnlocked) {
+      console.warn('[Security] Unauthorized attempt to delete exam');
+      return;
+    }
     setExams(prev => {
       const updated = prev.filter(e => e.id !== examId);
       localStorage.setItem('saytara_exams', JSON.stringify(updated));
@@ -705,6 +763,12 @@ export default function App() {
   const handleUnlockAdmin = () => {
     setIsAdminUnlocked(true);
     sessionStorage.setItem('saytara_admin_unlocked', 'true');
+  };
+
+  const handleLockAdmin = () => {
+    setIsAdminUnlocked(false);
+    sessionStorage.removeItem('saytara_admin_unlocked');
+    setEditingContent(null);
   };
 
   // Full reset of student progress on this device
@@ -776,9 +840,9 @@ export default function App() {
               }}
               onStartQuiz={(lec) => setActiveQuizLecture(lec)}
               onOpenAddCustomLecture={(subId) => handleOpenAdminTab('lectures', subId)}
-              onDeleteLecture={handleDeleteLecture}
-              onUpdateLecture={handleUpdateLecture}
-              onEditLecture={(lec) => setEditingContent({ type: 'lecture', data: lec })}
+              onDeleteLecture={isAdminUnlocked ? handleDeleteLecture : undefined}
+              onUpdateLecture={isAdminUnlocked ? handleUpdateLecture : undefined}
+              onEditLecture={isAdminUnlocked ? ((lec) => setEditingContent({ type: 'lecture', data: lec })) : undefined}
               readLectureIds={readLectureIds}
               onToggleReadLecture={handleToggleReadLecture}
               quizAttempts={quizAttempts}
@@ -822,9 +886,9 @@ export default function App() {
               language={language}
               isAdminUnlocked={isAdminUnlocked}
               onOpenAddModal={() => handleOpenAdminTab('summaries')}
-              onDeleteSummary={handleDeleteSummary}
+              onDeleteSummary={isAdminUnlocked ? handleDeleteSummary : undefined}
               onSelectSummaryToView={(sum) => setViewingSummary(sum)}
-              onEditSummary={(sum) => setEditingContent({ type: 'summary', data: sum })}
+              onEditSummary={isAdminUnlocked ? ((sum) => setEditingContent({ type: 'summary', data: sum })) : undefined}
             />
           )}
 
@@ -836,9 +900,9 @@ export default function App() {
               language={language}
               isAdminUnlocked={isAdminUnlocked}
               onOpenAddModal={() => handleOpenAdminTab('exams')}
-              onDeleteExam={handleDeleteExam}
+              onDeleteExam={isAdminUnlocked ? handleDeleteExam : undefined}
               onSelectExamToView={(exam) => setViewingExam(exam)}
-              onEditExam={(exam) => setEditingContent({ type: 'exam', data: exam })}
+              onEditExam={isAdminUnlocked ? ((exam) => setEditingContent({ type: 'exam', data: exam })) : undefined}
             />
           )}
 
@@ -849,10 +913,10 @@ export default function App() {
               language={language}
               isAdminUnlocked={isAdminUnlocked}
               onOpenAddModal={() => handleOpenAdminTab('schedule')}
-              onDeleteScheduleItem={handleDeleteScheduleItem}
-              onResetSchedule={handleResetSchedule}
+              onDeleteScheduleItem={isAdminUnlocked ? handleDeleteScheduleItem : undefined}
+              onResetSchedule={isAdminUnlocked ? handleResetSchedule : undefined}
               onSelectScheduleItemToView={(item) => setViewingScheduleItem(item)}
-              onEditScheduleItem={(item) => setEditingContent({ type: 'schedule', data: item })}
+              onEditScheduleItem={isAdminUnlocked ? ((item) => setEditingContent({ type: 'schedule', data: item })) : undefined}
             />
           )}
 
@@ -918,10 +982,11 @@ export default function App() {
             onToggleRead={() => handleToggleReadLecture(viewingLecture.id)}
             onClose={() => setViewingLecture(null)}
             onUpdateLecture={handleUpdateLecture}
-            onEdit={(lec) => {
+            isAdminUnlocked={isAdminUnlocked}
+            onEdit={isAdminUnlocked ? ((lec) => {
               setViewingLecture(null);
               setEditingContent({ type: 'lecture', data: lec });
-            }}
+            }) : undefined}
             onStartQuiz={(lec) => {
               setViewingLecture(null);
               setActiveQuizLecture(lec);
@@ -937,10 +1002,10 @@ export default function App() {
             language={language}
             isAdminUnlocked={isAdminUnlocked}
             onClose={() => setViewingSummary(null)}
-            onEdit={(sum) => {
+            onEdit={isAdminUnlocked ? ((sum) => {
               setViewingSummary(null);
               setEditingContent({ type: 'summary', data: sum });
-            }}
+            }) : undefined}
           />
         )}
 
@@ -952,10 +1017,10 @@ export default function App() {
             language={language}
             isAdminUnlocked={isAdminUnlocked}
             onClose={() => setViewingExam(null)}
-            onEdit={(ex) => {
+            onEdit={isAdminUnlocked ? ((ex) => {
               setViewingExam(null);
               setEditingContent({ type: 'exam', data: ex });
-            }}
+            }) : undefined}
           />
         )}
 
@@ -967,20 +1032,21 @@ export default function App() {
             language={language}
             isAdminUnlocked={isAdminUnlocked}
             onClose={() => setViewingScheduleItem(null)}
-            onEdit={(it) => {
+            onEdit={isAdminUnlocked ? ((it) => {
               setViewingScheduleItem(null);
               setEditingContent({ type: 'schedule', data: it });
-            }}
+            }) : undefined}
           />
         )}
 
-        {/* Edit Content Modal (After Publishing) */}
-        {editingContent && (
+        {/* Edit Content Modal (After Publishing) - Restricted strictly to supervisor */}
+        {editingContent && isAdminUnlocked && (
           <EditContentModal
             type={editingContent.type}
             data={editingContent.data}
             subjects={INITIAL_SUBJECTS}
             language={language}
+            isAdminUnlocked={isAdminUnlocked}
             onClose={() => setEditingContent(null)}
             onSaveLecture={handleUpdateLecture}
             onSaveSummary={handleUpdateSummary}
@@ -996,6 +1062,7 @@ export default function App() {
             language={language}
             isAdminUnlocked={isAdminUnlocked}
             onUnlockAdmin={handleUnlockAdmin}
+            onLockAdmin={handleLockAdmin}
             onClose={() => {
               setShowAdminModal(false);
               setAdminInitialSubjectId(undefined);

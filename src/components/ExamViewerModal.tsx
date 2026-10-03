@@ -168,7 +168,7 @@ export const ExamViewerModal: React.FC<ExamViewerModalProps> = ({
           </div>
 
           <div className="flex items-center gap-2 shrink-0">
-            {onEdit && (
+            {isAdminUnlocked && onEdit && (
               <button
                 type="button"
                 id="btn-edit-exam-from-modal"
@@ -177,7 +177,7 @@ export const ExamViewerModal: React.FC<ExamViewerModalProps> = ({
                   onEdit(exam);
                 }}
                 className="p-2 sm:px-3 sm:py-2 rounded-xl bg-amber-500 hover:bg-amber-600 text-white text-xs font-black flex items-center gap-1.5 transition-colors cursor-pointer shadow-xs"
-                title={language === 'ar' ? 'تعديل هذا النموذج' : 'Edit Exam'}
+                title={language === 'ar' ? 'تعديل هذا النموذج (للمشرف فقط)' : 'Edit Exam (Supervisor Only)'}
               >
                 <Edit3 className="w-4 h-4" />
                 <span className="hidden sm:inline">{language === 'ar' ? 'تعديل' : 'Edit'}</span>

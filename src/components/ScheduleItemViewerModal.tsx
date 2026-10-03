@@ -87,7 +87,7 @@ export const ScheduleItemViewerModal: React.FC<ScheduleItemViewerModalProps> = (
           </div>
 
           <div className="flex items-center gap-2 shrink-0">
-            {onEdit && (
+            {isAdminUnlocked && onEdit && (
               <button
                 type="button"
                 onClick={() => {
@@ -95,7 +95,7 @@ export const ScheduleItemViewerModal: React.FC<ScheduleItemViewerModalProps> = (
                   onEdit(item);
                 }}
                 className="p-2 sm:px-3.5 sm:py-2 rounded-xl bg-amber-500 hover:bg-amber-600 text-white text-xs font-black flex items-center gap-1.5 shadow-xs transition-all cursor-pointer"
-                title={language === 'ar' ? 'تعديل موعد أو تفاصيل هذه المحاضرة' : 'Edit Schedule Item'}
+                title={language === 'ar' ? 'تعديل موعد أو تفاصيل هذه المحاضرة (للمشرف فقط)' : 'Edit Schedule Item (Supervisor Only)'}
               >
                 <Edit3 className="w-3.5 h-3.5" />
                 <span className="hidden sm:inline">{language === 'ar' ? 'تعديل' : 'Edit'}</span>

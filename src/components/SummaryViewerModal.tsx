@@ -161,7 +161,7 @@ export const SummaryViewerModal: React.FC<SummaryViewerModalProps> = ({
           </div>
 
           <div className="flex items-center gap-2 shrink-0">
-            {onEdit && (
+            {isAdminUnlocked && onEdit && (
               <button
                 type="button"
                 id="btn-edit-summary-from-modal"

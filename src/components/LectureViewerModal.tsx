@@ -40,6 +40,7 @@ interface LectureViewerModalProps {
   initialMode?: 'pdf' | 'full' | 'overview';
   onUpdateLecture?: (updated: Lecture) => void;
   onEdit?: (lecture: Lecture) => void;
+  isAdminUnlocked?: boolean;
 }
 
 export const LectureViewerModal: React.FC<LectureViewerModalProps> = ({
@@ -53,6 +54,7 @@ export const LectureViewerModal: React.FC<LectureViewerModalProps> = ({
   initialMode,
   onUpdateLecture,
   onEdit,
+  isAdminUnlocked = false,
 }) => {
   const t = TRANSLATIONS[language];
   const [currentLecture, setCurrentLecture] = useState<Lecture>(initialLecture);
@@ -269,7 +271,7 @@ export const LectureViewerModal: React.FC<LectureViewerModalProps> = ({
           </div>
 
           <div className="flex items-center gap-2 shrink-0">
-            {onEdit && (
+            {isAdminUnlocked && onEdit && (
               <button
                 id="btn-edit-lecture-from-modal"
                 onClick={() => {
@@ -367,23 +369,25 @@ export const LectureViewerModal: React.FC<LectureViewerModalProps> = ({
             </button>
           </div>
 
-          {/* Quick Upload / Replace Button for User */}
+          {/* Quick Upload / Replace Button for Admin */}
           <div className="flex items-center gap-2">
-            <button
-              onClick={() => fileInputRef.current?.click()}
-              disabled={isUploading}
-              className="px-3 py-1.5 rounded-xl bg-amber-500 hover:bg-amber-600 text-white text-xs font-black flex items-center gap-1.5 shadow-sm transition-all cursor-pointer disabled:opacity-50"
-              title={language === 'ar' ? 'رفع نسختك الأصلية من الملف (PDF) كما هي دون أي تعديل' : 'Upload exact original file'}
-            >
-              <UploadCloud className="w-3.5 h-3.5" />
-              <span>
-                {isUploading 
-                  ? (language === 'ar' ? 'جارٍ الرفع...' : 'Uploading...') 
-                  : (hasPdfFile 
-                      ? (language === 'ar' ? 'استبدال بملف PDF الأصلي' : 'Replace PDF') 
-                      : (language === 'ar' ? 'رفع ملف PDF الأصلي' : 'Upload Original PDF'))}
-              </span>
-            </button>
+            {isAdminUnlocked && (
+              <button
+                onClick={() => fileInputRef.current?.click()}
+                disabled={isUploading}
+                className="px-3 py-1.5 rounded-xl bg-amber-500 hover:bg-amber-600 text-white text-xs font-black flex items-center gap-1.5 shadow-sm transition-all cursor-pointer disabled:opacity-50"
+                title={language === 'ar' ? 'رفع نسختك الأصلية من الملف (PDF) كما هي دون أي تعديل' : 'Upload exact original file'}
+              >
+                <UploadCloud className="w-3.5 h-3.5" />
+                <span>
+                  {isUploading 
+                    ? (language === 'ar' ? 'جارٍ الرفع...' : 'Uploading...') 
+                    : (hasPdfFile 
+                        ? (language === 'ar' ? 'استبدال بملف PDF الأصلي' : 'Replace PDF') 
+                        : (language === 'ar' ? 'رفع ملف PDF الأصلي' : 'Upload Original PDF'))}
+                </span>
+              </button>
+            )}
 
             {/* Font size adjuster if on text tab */}
             {activeTab === 'full' && (

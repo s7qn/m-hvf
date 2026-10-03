@@ -113,13 +113,19 @@ export const LecturesView: React.FC<LecturesViewProps> = ({
     if (selectedSubjectFilter !== 'all' && lec.subjectId !== selectedSubjectFilter) {
       return false;
     }
-    // Search query
+    // Search query: Comprehensive multi-field search for lectures
     if (searchQuery.trim()) {
-      const q = searchQuery.toLowerCase();
-      const matchTitle = (lec.titleAr + ' ' + lec.titleEn).toLowerCase().includes(q);
-      const matchDesc = (lec.descriptionAr + ' ' + lec.descriptionEn).toLowerCase().includes(q);
-      const matchInstructor = (lec.instructorAr + ' ' + lec.instructorEn).toLowerCase().includes(q);
-      return matchTitle || matchDesc || matchInstructor;
+      const q = searchQuery.toLowerCase().trim();
+      const subject = subjects.find(s => s.id === lec.subjectId);
+      const subName = subject ? `${subject.nameAr} ${subject.nameEn} ${subject.code}` : '';
+      const matchTitle = (lec.titleAr + ' ' + (lec.titleEn || '')).toLowerCase().includes(q);
+      const matchDesc = ((lec.descriptionAr || '') + ' ' + (lec.descriptionEn || '')).toLowerCase().includes(q);
+      const matchInstructor = ((lec.instructorAr || '') + ' ' + (lec.instructorEn || '')).toLowerCase().includes(q);
+      const matchSubject = subName.toLowerCase().includes(q);
+      const matchNumber = String(lec.lectureNumber) === q || `محاضرة ${lec.lectureNumber}`.includes(q) || `lecture ${lec.lectureNumber}`.includes(q);
+      const matchPoints = (lec.summaryPointsAr || []).some(p => p.toLowerCase().includes(q));
+      const matchFormulas = (lec.keyFormulas || []).some(f => f.toLowerCase().includes(q));
+      return matchTitle || matchDesc || matchInstructor || matchSubject || matchNumber || matchPoints || matchFormulas;
     }
     return true;
   });
@@ -301,39 +307,85 @@ export const LecturesView: React.FC<LecturesViewProps> = ({
           </div>
         </div>
 
-        {/* Search & Subject Selectors */}
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-3 pt-2">
-          {/* Search bar */}
-          <div className="relative md:col-span-2">
-            <Search className="w-4 h-4 text-slate-400 absolute top-1/2 -translate-y-1/2 right-3.5 rtl:right-3.5 ltr:left-3.5" />
-            <input
-              id="search-lectures-input"
-              type="text"
-              value={searchQuery}
-              onChange={(e) => setSearchQuery(e.target.value)}
-              placeholder={t.searchPlaceholder}
-              className="w-full py-2.5 pr-10 pl-4 rtl:pr-10 rtl:pl-4 ltr:pl-10 ltr:pr-4 rounded-xl border border-slate-200 dark:border-slate-700 focus:border-blue-600 focus:ring-2 focus:ring-blue-100 outline-hidden text-xs sm:text-sm bg-slate-50/50 dark:bg-slate-800 text-slate-900 dark:text-slate-100 placeholder:text-slate-400 dark:placeholder:text-slate-500"
-            />
+        {/* خانة البحث عن الملازم والمحاضرات (Dedicated Lecture Search Section) */}
+        <div id="section-search-lectures" className="p-4 sm:p-5 rounded-2xl bg-gradient-to-r from-blue-50/80 via-indigo-50/40 to-blue-50/80 dark:from-slate-800/80 dark:via-blue-950/40 dark:to-slate-800/80 border border-blue-200/90 dark:border-blue-900/60 shadow-xs space-y-3">
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2.5">
+            <div className="flex items-center gap-2.5">
+              <div className="w-8 h-8 rounded-xl bg-blue-600 text-white flex items-center justify-center shadow-xs shrink-0">
+                <Search className="w-4 h-4" />
+              </div>
+              <div>
+                <h3 className="text-sm sm:text-base font-black text-slate-900 dark:text-white flex items-center gap-2">
+                  <span>{language === 'ar' ? 'خانة البحث عن الملازم' : 'Lecture Search Bar'}</span>
+                  {searchQuery.trim() && (
+                    <span className="text-[11px] font-bold px-2 py-0.5 rounded-full bg-blue-600 text-white">
+                      {language === 'ar' ? `${filteredLectures.length} نتيجة` : `${filteredLectures.length} found`}
+                    </span>
+                  )}
+                </h3>
+                <p className="text-[11px] text-slate-500 dark:text-slate-400">
+                  {language === 'ar' 
+                    ? 'ابحث بسهولة في جميع الملازم والمحاضرات باسم الملزمة، رقم المحاضرة، المادة، أو اسم الدكتور' 
+                    : 'Search instantly by lecture title, subject, lecture number, or lecturer'}
+                </p>
+              </div>
+            </div>
+
+            {searchQuery.trim() && (
+              <button
+                type="button"
+                onClick={() => setSearchQuery('')}
+                className="self-start sm:self-auto px-2.5 py-1 rounded-lg bg-slate-200/80 dark:bg-slate-700/80 hover:bg-slate-300 dark:hover:bg-slate-600 text-slate-700 dark:text-slate-200 text-xs font-bold transition-all flex items-center gap-1 cursor-pointer"
+              >
+                <X className="w-3.5 h-3.5" />
+                <span>{language === 'ar' ? 'إلغاء البحث' : 'Clear Search'}</span>
+              </button>
+            )}
           </div>
 
-          {/* Subject Filter */}
-          <div>
-            <select
-              id="filter-subject-dropdown"
-              value={selectedSubjectFilter}
-              onChange={(e) => setSelectedSubjectFilter(e.target.value)}
-              className="w-full py-2.5 px-3 rounded-xl border border-slate-200 dark:border-slate-700 text-xs sm:text-sm font-semibold focus:border-blue-600 focus:ring-2 focus:ring-blue-100 outline-hidden bg-white dark:bg-slate-800 text-slate-700 dark:text-slate-200"
-            >
-              <option value="all">{t.allSubjects}</option>
-              {visibleSubjects.map(s => {
-                const count = getSubjectLectureCount(s.id);
-                return (
-                  <option key={s.id} value={s.id}>
-                    {s.code} - {language === 'ar' ? s.nameAr : s.nameEn} ({count === 0 ? (language === 'ar' ? 'بدون ملازم' : '0 notes') : `${count} ${language === 'ar' ? 'ملازم' : 'notes'}`})
-                  </option>
-                );
-              })}
-            </select>
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+            {/* Search Input with Clear Button */}
+            <div className="relative md:col-span-2">
+              <Search className="w-4 h-4 text-blue-600 dark:text-blue-400 absolute top-1/2 -translate-y-1/2 right-3.5 rtl:right-3.5 ltr:left-3.5 pointer-events-none" />
+              <input
+                id="search-lectures-input"
+                type="text"
+                value={searchQuery}
+                onChange={(e) => setSearchQuery(e.target.value)}
+                placeholder={language === 'ar' ? 'اكتب اسم الملزمة أو الموضوع أو المادة هنا للبحث الفوري...' : 'Type lecture name, topic, or subject to search...'}
+                className="w-full py-2.5 pr-10 pl-10 rtl:pr-10 rtl:pl-10 ltr:pl-10 ltr:pr-10 rounded-xl border border-blue-200 dark:border-slate-700 focus:border-blue-600 focus:ring-2 focus:ring-blue-100 outline-hidden text-xs sm:text-sm bg-white dark:bg-slate-900 text-slate-900 dark:text-slate-100 placeholder:text-slate-400 dark:placeholder:text-slate-500 shadow-2xs font-medium"
+              />
+              {searchQuery && (
+                <button
+                  type="button"
+                  onClick={() => setSearchQuery('')}
+                  className="absolute top-1/2 -translate-y-1/2 left-2.5 rtl:left-2.5 ltr:right-2.5 p-1 rounded-lg hover:bg-slate-100 dark:hover:bg-slate-800 text-slate-400 hover:text-slate-700 dark:hover:text-slate-200 transition-colors cursor-pointer"
+                  title={language === 'ar' ? 'مسح' : 'Clear'}
+                >
+                  <X className="w-4 h-4" />
+                </button>
+              )}
+            </div>
+
+            {/* Subject Dropdown */}
+            <div>
+              <select
+                id="filter-subject-dropdown"
+                value={selectedSubjectFilter}
+                onChange={(e) => setSelectedSubjectFilter(e.target.value)}
+                className="w-full py-2.5 px-3 rounded-xl border border-blue-200 dark:border-slate-700 text-xs sm:text-sm font-semibold focus:border-blue-600 focus:ring-2 focus:ring-blue-100 outline-hidden bg-white dark:bg-slate-900 text-slate-700 dark:text-slate-200 shadow-2xs"
+              >
+                <option value="all">{t.allSubjects}</option>
+                {visibleSubjects.map(s => {
+                  const count = getSubjectLectureCount(s.id);
+                  return (
+                    <option key={s.id} value={s.id}>
+                      {s.code} - {language === 'ar' ? s.nameAr : s.nameEn} ({count === 0 ? (language === 'ar' ? 'بدون ملازم' : '0 notes') : `${count} ${language === 'ar' ? 'ملازم' : 'notes'}`})
+                    </option>
+                  );
+                })}
+              </select>
+            </div>
           </div>
         </div>
 
@@ -388,14 +440,22 @@ export const LecturesView: React.FC<LecturesViewProps> = ({
 
           <div className="space-y-1.5 max-w-md mx-auto">
             <h3 className="text-base sm:text-lg font-black text-slate-800 dark:text-slate-100">
-              {currentSelectedSubject 
+              {searchQuery.trim()
+                ? (language === 'ar' 
+                    ? `لم يتم العثور على أي ملزمة مطابقة لـ «${searchQuery}»`
+                    : `No lectures found matching "${searchQuery}"`)
+                : currentSelectedSubject 
                 ? (language === 'ar' 
                     ? `مادة «${currentSelectedSubject.nameAr}» بدون ملازم حالياً`
                     : `"${currentSelectedSubject.nameEn}" currently has no handouts`)
                 : t.noLecturesFound}
             </h3>
             <p className="text-xs sm:text-sm text-slate-500 dark:text-slate-400 leading-relaxed">
-              {currentSelectedSubject 
+              {searchQuery.trim()
+                ? (language === 'ar'
+                    ? 'تأكد من صحة الكلمات المكتوبة أو ابحث باسم المادة، أو اضغط زر مسح البحث لإعادة إظهار الملازم.'
+                    : 'Try checking your spelling or clearing the search filter.')
+                : currentSelectedSubject 
                 ? (language === 'ar'
                     ? 'تم إعداد هذه المادة بدون أي ملازم وهمية بناءً على طلبك. يمكنك الآن إضافة أول ملزمة أو محاضرة مخصصة لها مباشرة مع الاختبار الخاص بها.'
                     : 'This course has no pre-filled notes. You can now add your own custom lecture notes and quizzes directly.')
@@ -405,7 +465,18 @@ export const LecturesView: React.FC<LecturesViewProps> = ({
             </p>
           </div>
 
-          {onOpenAddCustomLecture && (
+          {searchQuery.trim() ? (
+            <div className="pt-2">
+              <button
+                type="button"
+                onClick={() => setSearchQuery('')}
+                className="px-4 py-2 rounded-xl bg-blue-50 dark:bg-blue-950/60 hover:bg-blue-100 border border-blue-200 dark:border-blue-800 text-blue-700 dark:text-blue-300 text-xs font-bold transition-all cursor-pointer inline-flex items-center gap-1.5 shadow-xs"
+              >
+                <X className="w-4 h-4" />
+                <span>{language === 'ar' ? 'مسح البحث والعودة للملازم' : 'Clear Search & Show All'}</span>
+              </button>
+            </div>
+          ) : onOpenAddCustomLecture && (
             <div className="pt-2">
               <button
                 id="btn-add-custom-lecture-empty-state"
@@ -582,32 +653,34 @@ export const LecturesView: React.FC<LecturesViewProps> = ({
                       <Download className="w-4 h-4" />
                     </button>
 
-                    {/* Direct Upload / Replace with Original PDF Button */}
-                    <label
-                      htmlFor={`input-direct-file-${lecture.id}`}
-                      className="p-2 rounded-xl border border-amber-300 dark:border-amber-700 bg-amber-50 dark:bg-amber-950/40 hover:bg-amber-100 text-amber-800 dark:text-amber-200 text-xs font-bold transition-colors cursor-pointer flex items-center gap-1.5"
-                      title={language === 'ar' ? 'رفع نسختك الأصلية من ملف الـ PDF كما هي دون تعديل' : 'Upload original PDF file'}
-                    >
-                      <UploadCloud className="w-3.5 h-3.5 text-amber-600" />
-                      <span className="hidden sm:inline">
-                        {uploadingLecId === lecture.id
-                          ? (language === 'ar' ? 'جارٍ الرفع...' : 'Uploading...')
-                          : (lecture.fileUrl 
-                              ? (language === 'ar' ? 'استبدال PDF' : 'Replace PDF') 
-                              : (language === 'ar' ? 'رفع PDF الأصلي' : 'Upload PDF'))}
-                      </span>
-                      <input
-                        id={`input-direct-file-${lecture.id}`}
-                        type="file"
-                        accept=".pdf,.doc,.docx,.txt"
-                        className="hidden"
-                        onChange={(e) => handleDirectUploadForLecture(lecture, e)}
-                        disabled={uploadingLecId === lecture.id}
-                      />
-                    </label>
+                    {/* Direct Upload / Replace with Original PDF Button (Admin only) */}
+                    {isAdminUnlocked && (
+                      <label
+                        htmlFor={`input-direct-file-${lecture.id}`}
+                        className="p-2 rounded-xl border border-amber-300 dark:border-amber-700 bg-amber-50 dark:bg-amber-950/40 hover:bg-amber-100 text-amber-800 dark:text-amber-200 text-xs font-bold transition-colors cursor-pointer flex items-center gap-1.5"
+                        title={language === 'ar' ? 'رفع نسختك الأصلية من ملف الـ PDF كما هي دون تعديل' : 'Upload original PDF file'}
+                      >
+                        <UploadCloud className="w-3.5 h-3.5 text-amber-600" />
+                        <span className="hidden sm:inline">
+                          {uploadingLecId === lecture.id
+                            ? (language === 'ar' ? 'جارٍ الرفع...' : 'Uploading...')
+                            : (lecture.fileUrl 
+                                ? (language === 'ar' ? 'استبدال PDF' : 'Replace PDF') 
+                                : (language === 'ar' ? 'رفع PDF الأصلي' : 'Upload PDF'))}
+                        </span>
+                        <input
+                          id={`input-direct-file-${lecture.id}`}
+                          type="file"
+                          accept=".pdf,.doc,.docx,.txt"
+                          className="hidden"
+                          onChange={(e) => handleDirectUploadForLecture(lecture, e)}
+                          disabled={uploadingLecId === lecture.id}
+                        />
+                      </label>
+                    )}
 
-                    {/* Edit Lecture Details Button */}
-                    {onEditLecture && (
+                    {/* Edit Lecture Details Button (Admin only) */}
+                    {isAdminUnlocked && onEditLecture && (
                       <button
                         type="button"
                         id={`btn-edit-lec-${lecture.id}`}
@@ -620,7 +693,8 @@ export const LecturesView: React.FC<LecturesViewProps> = ({
                       </button>
                     )}
 
-                    {onDeleteLecture && (
+                    {/* Delete Lecture Button (Admin only) */}
+                    {isAdminUnlocked && onDeleteLecture && (
                       deletingLectureId === lecture.id ? (
                         <div className="flex items-center gap-1 p-1 bg-red-50 dark:bg-red-950/80 border border-red-300 dark:border-red-800 rounded-xl shadow-xs animate-fadeIn">
                           <span className="text-[11px] font-bold text-red-700 dark:text-red-300 px-1 whitespace-nowrap">

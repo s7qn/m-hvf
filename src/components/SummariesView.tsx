@@ -103,8 +103,8 @@ export const SummariesView: React.FC<SummariesViewProps> = ({
             </h3>
             <p className="text-xs sm:text-sm text-slate-500 dark:text-slate-400 leading-relaxed max-w-md mx-auto">
               {language === 'ar'
-                ? 'قسم الملخصات متاح لإضافة ملخصات المواد وبطاقات القوانين الهندسية مع التوثيق المعتمد.'
-                : 'This section is ready for course summaries and engineering formula sheets.'}
+                ? 'تم إفراغ خانة الملخصات والقوانين بالكامل. هذه الخانة بانتظار إضافة الملخصات وبطاقات القوانين الخاصة بك من قِبل المشرف.'
+                : 'The summaries and formulas section is completely cleared and awaiting custom additions from the supervisor.'}
             </p>
           </div>
 
@@ -140,7 +140,7 @@ export const SummariesView: React.FC<SummariesViewProps> = ({
                       <span className="text-xs text-slate-400 font-mono font-bold">
                         {summary.pagesCount} {language === 'ar' ? 'صفحات' : 'pages'} • {summary.fileSize}
                       </span>
-                      {onEditSummary && (
+                      {isAdminUnlocked && onEditSummary && (
                         <button
                           type="button"
                           id={`btn-edit-sum-${summary.id}`}

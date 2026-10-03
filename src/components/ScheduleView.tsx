@@ -685,13 +685,13 @@ export const ScheduleView: React.FC<ScheduleViewProps> = ({
                           </button>
                         )}
 
-                        {onEditScheduleItem && (
+                        {isAdminUnlocked && onEditScheduleItem && (
                           <button
                             type="button"
                             id={`btn-edit-sch-${item.id}`}
                             onClick={() => onEditScheduleItem(item)}
                             className="p-1 rounded-lg text-slate-400 hover:text-amber-600 hover:bg-amber-50 dark:hover:bg-amber-950/40 transition-colors cursor-pointer"
-                            title={language === 'ar' ? 'تعديل موعد وبيانات المحاضرة' : 'Edit Schedule Item'}
+                            title={language === 'ar' ? 'تعديل موعد وبيانات المحاضرة (للمشرف فقط)' : 'Edit Schedule Item (Supervisor Only)'}
                           >
                             <Edit3 className="w-3.5 h-3.5" />
                           </button>

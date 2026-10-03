@@ -70,10 +70,16 @@ async function startServer() {
         const validLectures = (Array.isArray(parsed.lectures) ? parsed.lectures : [])
           .filter(l => l && l.id && !deletedLectureIds.includes(l.id));
 
+        const validSummaries = (Array.isArray(parsed.summaries) ? parsed.summaries : [])
+          .filter(s => s && s.id && s.id !== 'sum-ctrl-stability' && s.id !== 'sum-digital-logic-kmaps');
+
+        const validExams = (Array.isArray(parsed.exams) ? parsed.exams : [])
+          .filter(e => e && e.id && e.id !== 'exam-control-final-2024' && e.id !== 'exam-logic-midterm-2024');
+
         return {
           lectures: validLectures,
-          summaries: Array.isArray(parsed.summaries) ? parsed.summaries : [],
-          exams: Array.isArray(parsed.exams) ? parsed.exams : [],
+          summaries: validSummaries,
+          exams: validExams,
           schedule: Array.isArray(parsed.schedule) ? parsed.schedule : null,
           deletedLectureIds,
           lastUpdated: parsed.lastUpdated || new Date().toISOString(),
@@ -176,7 +182,9 @@ async function startServer() {
       if (summariesSnap) {
         summariesSnap.forEach(d => {
           const item = d.data();
-          if (item && item.id) firestoreSummaries.push(item);
+          if (item && item.id && item.id !== 'sum-ctrl-stability' && item.id !== 'sum-digital-logic-kmaps') {
+            firestoreSummaries.push(item);
+          }
         });
       }
 
@@ -184,7 +192,9 @@ async function startServer() {
       if (examsSnap) {
         examsSnap.forEach(d => {
           const item = d.data();
-          if (item && item.id) firestoreExams.push(item);
+          if (item && item.id && item.id !== 'exam-control-final-2024' && item.id !== 'exam-logic-midterm-2024') {
+            firestoreExams.push(item);
+          }
         });
       }
 

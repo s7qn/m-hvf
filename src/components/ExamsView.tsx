@@ -134,12 +134,12 @@ export const ExamsView: React.FC<ExamsViewProps> = ({
           </div>
           <div className="space-y-1.5">
             <h3 className="text-lg font-black text-slate-900 dark:text-white">
-              {language === 'ar' ? 'لا توجد نماذج امتحانية متطابقة' : 'No Exam Papers Available'}
+              {language === 'ar' ? 'لا توجد نماذج أو أسئلة امتحانية حالياً' : 'No Exam Papers Available'}
             </h3>
             <p className="text-xs sm:text-sm text-slate-500 dark:text-slate-400 leading-relaxed max-w-md mx-auto">
               {language === 'ar'
-                ? 'أرشيف الأسئلة الامتحانية متاح لإضافة نماذج الامتحانات الوزارية والجامعية مع الحلول النموذجية.'
-                : 'The exam papers archive is ready for semester and final examination papers with solved keys.'}
+                ? 'تم إفراغ خانة الأسئلة الامتحانية بالكامل. هذه الخانة بانتظار إضافة الأسئلة والنماذج الخاصة بك من قِبل المشرف.'
+                : 'The exam section is completely clear and awaiting your custom exam papers.'}
             </p>
           </div>
 
@@ -183,7 +183,7 @@ export const ExamsView: React.FC<ExamsViewProps> = ({
                           <span>{t.solved}</span>
                         </span>
                       )}
-                      {onEditExam && (
+                      {isAdminUnlocked && onEditExam && (
                         <button
                           type="button"
                           id={`btn-edit-exam-${exam.id}`}
@@ -192,7 +192,7 @@ export const ExamsView: React.FC<ExamsViewProps> = ({
                             onEditExam(exam);
                           }}
                           className="p-1 rounded-lg text-slate-400 hover:text-amber-600 hover:bg-amber-50 dark:hover:bg-amber-950/40 transition-colors cursor-pointer"
-                          title={language === 'ar' ? 'تعديل هذا النموذج' : 'Edit Exam'}
+                          title={language === 'ar' ? 'تعديل هذا النموذج (للمشرف فقط)' : 'Edit Exam (Supervisor Only)'}
                         >
                           <Edit3 className="w-3.5 h-3.5" />
                         </button>
